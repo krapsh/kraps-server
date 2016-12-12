@@ -11,13 +11,26 @@ spName := "krapsh/krapsh-server"
 // Don't forget to set the version
 version := s"0.1.1"
 
+credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
+
+spShortDescription := "Experimental REST API to run Spark computation graphs"
+
+spDescription := """This is the server part for the Kraps project. It provides a simple REST API to execute
+                   |data pipelines with Spark in a language independent manner. It complements (on the JVM side) the
+                   |Haskell bindings available in Krapsh.
+                   |
+                   |This project is only a technological preview. The API may change in the future.
+                   |""".stripMargin
+
+spHomepage := "https://github.com/krapsh/kraps-server"
+
 // All Spark Packages need a license
 licenses := Seq("Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0"))
 
 spAppendScalaVersion := true
 
 // Add Spark components this package depends on, e.g, "mllib", ....
-sparkComponents ++= Seq("graphx", "sql", "mllib")
+sparkComponents ++= Seq("sql")
 
 // uncomment and change the value below to change the directory where your zip artifact will be created
 // spDistDirectory := target.value
