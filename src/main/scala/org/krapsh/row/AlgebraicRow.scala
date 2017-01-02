@@ -33,7 +33,7 @@ object AlgebraicRow {
     }
   }
 
-  def toRow(ar: AlgebraicRow): Row = Row(ar.cells.map(toAny))
+  def toRow(ar: AlgebraicRow): Row = Row(ar.cells.map(toAny):_*)
 
   private def cellsOrdering = Ordering.Iterable[Cell](CellOrdering)
 
