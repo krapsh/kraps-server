@@ -9,7 +9,7 @@ scalaVersion := "2.11.7"
 spName := "krapsh/krapsh-server"
 
 // Don't forget to set the version
-version := s"0.1.1"
+version := s"0.1.7"
 
 credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 
