@@ -3,11 +3,11 @@ package org.krapsh
 import scala.collection.JavaConversions._
 import scala.util.{Failure, Success, Try}
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import spray.json.{JsArray, JsObject, JsValue}
+import spray.json.{JsArray, JsObject, JsString, JsValue}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.krapsh.row.{AlgebraicRow, RowArray}
+import org.krapsh.row.{AlgebraicRow, RowArray, RowCell}
 import org.krapsh.structures._
 
 
@@ -50,16 +50,61 @@ object SparkRegistry extends Logging {
     res
   }
 
+  def unpackRowElements(df: DataFrame): DataFrame = {
+    def fun(r: Row, st: StructType): Any = {
+      val ar2 = AlgebraicRow.fromRow(r, st) match {
+        case Success(AlgebraicRow(Seq(RowArray(seq)))) =>
+          val seq2 = seq.map {
+            case RowCell(AlgebraicRow(Seq(cell))) => cell
+            case x => throw new Exception(s"Expected a RowArray with a single element, got $x")
+          }
+          println(s">>unpackRowElements: seq=$seq")
+          println(s">>unpackRowElements: seq2=$seq2")
+          RowArray(seq2)
+        case e =>
+          throw new Exception(s"Could not convert $r of type $st: $e")
+      }
+      val arr = AlgebraicRow.toAny(ar2)
+      println(s">>unpackRowElements: arr=$arr")
+      arr
+    }
+    val schema = df.schema
+    // We expect a single field with a an array that contains a struct with a single field as well.
+    val (fname, at) = schema.fields match {
+      case Array(StructField(name, ArrayType(StructType(Array(f)), n), _, _)) =>
+        name -> ArrayType(f.dataType, containsNull = n)
+      case x => throw new Exception(s"Expected one field, got $df")
+    }
+    def u2(r: Row) = fun(r, schema)
+    val localUdf = org.apache.spark.sql.functions.udf(u2 _, at)
+    import df.sparkSession.implicits._
+    val res = df.select(localUdf(struct(df.col(fname))))
+    logger.debug(s"orderRowElements: df=$df, res=$res")
+    res
+  }
 
   val collect = createTypedBuilderD("org.spark.Collect") { (adf, _) =>
-    val c0 = DataFrameWithType.asColumn(adf)
-    val c = collect_list(c0)
-    val df2 = adf.df.groupBy().agg(c)
+    val df2 = if (adf.rectifiedSchema.isNullable && adf.rectifiedSchema.isPrimitive) {
+        logger.debug(s"collect: primitive+nullable")
+        // Nullable and primitive, we must wrap the content (otherwise the null values get
+        // discarded).
+        val c0 = DataFrameWithType.asWrappedColumn(adf)
+        val c = collect_list(c0)
+        val coll = adf.df.groupBy().agg(c)
+        unpackRowElements(coll)
+    } else {
+      // The other cases: wrap the content, but no need to extract the values after that.
+      logger.debug(s"collect: wrapped")
+      val c0 = DataFrameWithType.asColumn(adf)
+      val c = collect_list(c0)
+      adf.df.groupBy().agg(c)
+    }
+    logger.debug(s"collect: df2=$df2")
     // Ensure that the final elements are sorted
     val df3 = orderRowElements(df2)
     val schema = AugmentedDataType.wrapArray(adf.rectifiedSchema)
     logger.info(s"collect: input df: $adf ${adf.df.schema}")
-    logger.info(s"collect: output df2: $df3 ${df3.schema}")
+    logger.info(s"collect: output df3: $df3 ${df3.schema}")
     logger.info(s"collect: output schema: $schema")
     DataFrameWithType(df3, schema)
   }
@@ -182,6 +227,28 @@ object SparkRegistry extends Logging {
     DataFrameWithType(df, adt)
   }
 
+  val join = createBuilderDD("org.spark.Join") { (df1, df2, js) =>
+    val key1f = df1.schema.fields match {
+      case Array(keyf, _) => keyf
+      case x => throw new Exception(s"The schema should be a (key, val), but got $x")
+    }
+    val key2f = df2.schema.fields match {
+      case Array(keyf, _) => keyf
+      case x => throw new Exception(s"The schema should be a (key, val), but got $x")
+    }
+    require(key1f == key2f,
+      s"The two dataframe keys are not compatible: $key1f in $df1 ... $key2f in $df2")
+    val joinType = js match {
+      case JsString(s) =>
+        require(List("inner").contains(s), s"Unknown join type: $s")
+        s
+      case _ => throw new Exception(s"Unknown join data type: $js")
+    }
+
+    val res = df1.join(df2, usingColumns = Seq(key1f.name), joinType = joinType)
+    res
+  }
+
   val sum = createBuilderD("org.spark.Sum") { (df, js) =>
     // Spark decides sometimes to perform some automated casting.
     // This does not go well with strong typing, so it is reversed here.
@@ -212,6 +279,7 @@ object SparkRegistry extends Logging {
     constant,
     count,
     identity,
+    join,
     localAbs,
     localConstant,
     localDiv,
@@ -263,22 +331,30 @@ object SparkSelector extends Logging {
       // Unroll the computations at the top, because we need to build the columns one by one
       case InnerStruct(fields) =>
         val cst = sequence(fields.map { f =>
-          select0(adf, trans).map { case (c, adt2) =>
+          select0(adf, f.fieldTrans).map { case (c, adt2) =>
             c.as(f.fieldName) -> StructField(f.fieldName, adt2.dataType, adt2.isNullable)
           }
         })
+
         cst.map { cs =>
+          logger.debug(s"select: cs=$cs")
           val cols = cs.map(_._1)
           val sfs = cs.map(_._2)
           val st = StructType(sfs)
-          cols -> AugmentedDataType(st, IsStrict)
+          val adt = AugmentedDataType(st, IsStrict)
+          logger.debug(s"select: adt=$adt")
+          cols -> adt
         }
     }
 
     for {
       trans <- parseTrans(js)
       res <- select1(trans)
-    } yield res
+    } yield {
+      logger.debug(s"select: trans = $trans")
+      logger.debug(s"select: res = $res")
+      res
+    }
   }
 
   private sealed trait ColOp
@@ -337,7 +413,9 @@ object SparkSelector extends Logging {
       trans: StructuredTransform): Try[(Column, AugmentedDataType)] = trans match {
     case InnerOp(ColExtraction(p)) =>
       for (t <- extractType(adf.rectifiedSchema, p)) yield {
-        extractCol(adf, p) -> t
+        val c = extractCol(adf, p)
+        logger.debug(s"select0: t=$t c=$c")
+        c -> t
       }
 
     case InnerStruct(fields) =>
@@ -391,6 +469,7 @@ object SparkSelector extends Logging {
   private def extractCol(adf: DataFrameWithType, path: List[String]): Column = {
     // We are asked all the dataframe, but the schema is a primitive: go straight for the
     // unique column of this dataframe.
+    logger.debug(s"extractCol: path=$path adf=$adf")
     (path, adf.rectifiedSchema.topLevelStruct) match {
       case (Nil, None) =>
         val n = adf.df.schema.fields match {
@@ -413,9 +492,9 @@ object SparkSelector extends Logging {
   }
 
   // This is not checked, because the check is done when finding the type of the element.
-  private def extractCol(col: Column, path: Seq[String]): Column = path match {
+  private def extractCol(col: Column, path: List[String]): Column = path match {
     case Seq() => col
-    case seq =>
-      extractCol(col.getField(seq.head), seq.tail)
+    case h :: t =>
+      extractCol(col.getField(h), t)
   }
 }

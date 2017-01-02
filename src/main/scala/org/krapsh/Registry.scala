@@ -18,7 +18,7 @@ import org.krapsh.structures.{AugmentedDataType, CellWithType, IsStrict, Untyped
  * Krapsh and Spark differ in their handling of nullability and primitive types:
  *  - krapsh allows primitive types as top-level, while Spark only accepts structures at the top
  *  level
- *  - spark does not correctly handle nullability in a number of common situations, so the exact
+ *  - Spark does not correctly handle nullability in a number of common situations, so the exact
  *  type has to be overridden by providing the correct data type.
  *
  * The only piece of information that does not get carried along is the metadata. It is ignored
@@ -42,14 +42,23 @@ object DataFrameWithType extends Logging {
         case _ => throw new Exception(s"Expected single field in $adf")
       }
     } else {
-      // Put everything in a struct, because this is the original type.
-      logger.debug(s"asColumn: adf=$adf ")
-      val colNames = adf.df.schema.fieldNames.toSeq
-      logger.debug(s"asColumn: colNames=$colNames")
-      val cols = colNames.map(n => adf.df.col(n))
-      logger.debug(s"asColumn: cols=$cols")
-      struct(cols: _*)
+      asWrappedColumn(adf)
     }
+  }
+
+  /**
+   * Unconditionnally wraps the content of the augmented dataframe into a structure. It does not
+   * attempt to unpack single fields.
+   */
+  def asWrappedColumn(adf : DataFrameWithType): Column = {
+    // Put everything in a struct, because this is the original type.
+    logger.debug(s"asColumn: adf=$adf ")
+    val colNames = adf.df.schema.fieldNames.toSeq
+    logger.debug(s"asColumn: colNames=$colNames")
+    val cols = colNames.map(n => adf.df.col(n))
+    logger.debug(s"asColumn: cols=$cols")
+    struct(cols: _*)
+
   }
 }
 
@@ -199,6 +208,20 @@ object GlobalRegistry extends Logging {
     }
     createBuilder(opName)(fun1)
   }
+
+  def createBuilderDD(opName: String)
+                     (fun: (DataFrame, DataFrame, JsValue) => DataFrame): OpBuilder = {
+    def fun1(items: Seq[ExecutionOutput], jsValue: JsValue): DataFrameWithType = {
+      items match {
+        case Seq(DisExecutionOutput(adf1), DisExecutionOutput(adf2)) =>
+          DataFrameWithType.create(fun(adf1.df, adf2.df, jsValue))
+        case _ => throw new Exception(s"Unexpected input for op $opName: $items")
+      }
+    }
+    createBuilder(opName)(fun1)
+  }
+
+
 
   def createTypedBuilderD(opName: String)(
         fun: (DataFrameWithType, JsValue) => DataFrameWithType): OpBuilder = {
