@@ -221,8 +221,6 @@ object GlobalRegistry extends Logging {
     createBuilder(opName)(fun1)
   }
 
-
-
   def createTypedBuilderD(opName: String)(
         fun: (DataFrameWithType, JsValue) => DataFrameWithType): OpBuilder = {
     def fun1(items: Seq[ExecutionOutput], jsValue: JsValue): DataFrameWithType = {

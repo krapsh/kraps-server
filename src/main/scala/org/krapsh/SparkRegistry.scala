@@ -8,6 +8,11 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.krapsh.row.{AlgebraicRow, RowArray, RowCell}
+import spray.json.{JsArray, JsObject, JsValue}
+import org.apache.spark.sql._
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
+import org.krapsh.row.{AlgebraicRow, RowArray}
 import org.krapsh.structures._
 
 
@@ -469,7 +474,6 @@ object SparkSelector extends Logging {
   private def extractCol(adf: DataFrameWithType, path: List[String]): Column = {
     // We are asked all the dataframe, but the schema is a primitive: go straight for the
     // unique column of this dataframe.
-    logger.debug(s"extractCol: path=$path adf=$adf")
     (path, adf.rectifiedSchema.topLevelStruct) match {
       case (Nil, None) =>
         val n = adf.df.schema.fields match {
@@ -493,7 +497,7 @@ object SparkSelector extends Logging {
 
   // This is not checked, because the check is done when finding the type of the element.
   private def extractCol(col: Column, path: List[String]): Column = path match {
-    case Seq() => col
+    case Nil => col
     case h :: t =>
       extractCol(col.getField(h), t)
   }
