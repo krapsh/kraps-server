@@ -21,6 +21,7 @@ sealed trait Nullable
 case object IsStrict extends Nullable
 case object IsNullable extends Nullable
 
+
 /**
  * The basic data type used around Krapsh.
  *
@@ -52,6 +53,11 @@ object AugmentedDataType {
    */
   def wrapArray(adt: AugmentedDataType): AugmentedDataType = {
     AugmentedDataType(ArrayType(adt.dataType, adt.isNullable), IsStrict)
+  }
+
+  def fromField(f: StructField): AugmentedDataType = {
+    val nl = if (f.nullable) IsNullable else IsStrict
+    AugmentedDataType(f.dataType, nl)
   }
 }
 
@@ -217,6 +223,20 @@ object JsonSparkConversions {
     case Some(x) => Failure(new Exception(s"Wrong value $x for key $key in $m"))
   }
 
+  def getFlatten[X](m: Map[String, JsValue], key: String)(f: JsValue => Try[X]): Try[X] = {
+    m.get(key) match {
+      case None => Failure(new Exception(s"Missing key $key in $m"))
+      case Some(x) => f(x)
+    }
+  }
+
+  def getFlattenSeq[X](m: Map[String, JsValue], key: String)(f: JsValue => Try[X]): Try[Seq[X]] = {
+    def f2(jsValue: JsValue) = jsValue match {
+      case JsArray(arr) => sequence(arr.map(f))
+      case x => Failure(new Exception(s"Expected array, got $x"))
+    }
+    getFlatten(m, key)(f2)
+  }
 
   def getString(
       m: Map[String, JsValue],
@@ -234,6 +254,15 @@ object JsonSparkConversions {
       case JsString(s) => Success(s)
       case x => Failure(new Exception(s"Expected string, got $x"))
     }).map(_.toList)
+    case Some(x) => Failure(new Exception(s"Wrong value $x for key $key in $m"))
+  }
+
+  def getStringListList(
+      m: Map[String, JsValue],
+      key: String): Try[Seq[Seq[String]]] = m.get(key) match {
+    case None => Failure(new Exception(s"Missing key $key in $m"))
+    case Some(JsArray(arr)) => sequence(arr.map(arr2 =>
+      getStringList(Map("k"->JsArray(arr2)), "k")))
     case Some(x) => Failure(new Exception(s"Wrong value $x for key $key in $m"))
   }
 

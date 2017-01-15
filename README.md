@@ -14,6 +14,6 @@ The spark package has been tested with Spark 2.0 and Spark 2.1.
 
 ```
 ./build/sbt assembly && $SPARK_HOME/bin/spark-submit \
-    ./target/scala-2.11/krapsh-server-assembly-0.1.1.jar --name krapsh-server\
+    ./target/scala-2.11/krapsh-server-assembly-0.1.9.jar --name krapsh-server\
      --class org.krapsh.Boot --master "local[1]" -v
 ```

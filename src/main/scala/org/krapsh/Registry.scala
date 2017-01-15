@@ -2,15 +2,16 @@ package org.krapsh
 
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
-
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import spray.json.JsValue
-
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{struct => sqlStruct}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql._
-
+import org.krapsh.ops.Extraction
 import org.krapsh.structures.{AugmentedDataType, CellWithType, IsStrict, UntypedNodeJson}
+
+import scala.util.{Failure, Success, Try}
 
 /**
  * A dataframe, along with the type as Krapsh wants to see it.
@@ -47,6 +48,13 @@ object DataFrameWithType extends Logging {
   }
 
   /**
+   * Represents the dataframe as a column, with the same type.
+   */
+  def asTypedColumn(adf: DataFrameWithType): ColumnWithType = {
+    ColumnWithType(asColumn(adf), adf.rectifiedSchema, adf.df)
+  }
+
+  /**
    * Unconditionnally wraps the content of the augmented dataframe into a structure. It does not
    * attempt to unpack single fields.
    */
@@ -58,6 +66,53 @@ object DataFrameWithType extends Logging {
     val cols = colNames.map(n => adf.df.col(n))
     logger.debug(s"asColumn: cols=$cols")
     struct(cols: _*)
+
+  }
+}
+
+
+/**
+ * A data column, along with the type as Krapsh expects it.
+ *
+ * Unlike Spark's columns, it also stores its refering dataframe.
+ */
+case class ColumnWithType(
+    col: Column,
+    rectifiedSchema: AugmentedDataType,
+    ref: DataFrame) {
+
+  def alias(f: Extraction.FieldName): ColumnWithType = {
+    ColumnWithType(col.alias(f.name), rectifiedSchema, ref)
+  }
+}
+
+object ColumnWithType extends Logging {
+  def struct(cols: ColumnWithType*): Try[ColumnWithType] = {
+    val reft = cols.headOption match {
+      case Some(c2) => Success(c2.ref)
+      case None => Failure(new Exception("Structure cannot be empty"))
+    }
+    for {
+      ref <- reft
+      s <- Try(sqlStruct(cols.map(_.col):_*))
+    } yield {
+      val dt = KrapshStubs.getExpression(s).dataType
+      ColumnWithType(s, AugmentedDataType(dt, IsStrict), ref)
+    }
+  }
+
+  /**
+   * Unconditionnally wraps the content of the augmented dataframe into a structure. It does not
+   * attempt to unpack single fields.
+   */
+  def asWrappedColumn(adf : DataFrameWithType): Column = {
+    // Put everything in a struct, because this is the original type.
+    logger.debug(s"asColumn: adf=$adf ")
+    val colNames = adf.df.schema.fieldNames.toSeq
+    logger.debug(s"asColumn: colNames=$colNames")
+    val cols = colNames.map(n => adf.df.col(n))
+    logger.debug(s"asColumn: cols=$cols")
+    sqlStruct(cols: _*)
 
   }
 }
@@ -199,10 +254,11 @@ object GlobalRegistry extends Logging {
   }
 
   // Builder that takes a single dataframe at the input.
-  def createBuilderD(opName: String)(fun: (DataFrame, JsValue) => DataFrame): OpBuilder = {
+  def createBuilderD(opName: String)
+                    (fun: (DataFrameWithType, JsValue) => DataFrameWithType): OpBuilder = {
     def fun1(items: Seq[ExecutionOutput], jsValue: JsValue): DataFrameWithType = {
       items match {
-        case Seq(DisExecutionOutput(adf)) => DataFrameWithType.create(fun(adf.df, jsValue))
+        case Seq(DisExecutionOutput(adf)) => fun(adf, jsValue)
         case _ => throw new Exception(s"Unexpected input for op $opName: $items")
       }
     }

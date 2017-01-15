@@ -2,6 +2,7 @@ package org.apache.spark.sql
 
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.execution.{QueryExecution, SQLExecution}
 
 object KrapshStubs {
@@ -19,4 +20,6 @@ object KrapshStubs {
     df.exprEnc.resolveAndBind(df.logicalPlan.output,
       df.sparkSession.sessionState.analyzer)
   }
+
+  def getExpression(c: Column): Expression = c.expr
 }
