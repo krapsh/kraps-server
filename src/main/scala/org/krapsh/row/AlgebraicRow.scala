@@ -2,7 +2,7 @@ package org.krapsh.row
 
 
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.types.{ArrayType, DataType, IntegerType, StructType}
+import org.apache.spark.sql.types._
 
 import scala.util.{Failure, Success, Try}
 
@@ -86,6 +86,9 @@ object AlgebraicRow {
     // Primitives
     case (i: Int, t: IntegerType) => Success(IntElement(i))
     case (i: Integer, t: IntegerType) => Success(IntElement(i))
+    // TODO: proper implementation of the long type
+    case (i: Long, t: LongType) => Success(IntElement(i.toInt))
+    case (s: String, t: StringType) => Success(StringElement(s))
     // Sequences
     case (a: Array[Any], _) => from(a.toSeq, dt)
     case (s: Seq[Any], t: ArrayType) =>
