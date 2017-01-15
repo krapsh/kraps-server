@@ -100,6 +100,21 @@ object ColumnWithType extends Logging {
       ColumnWithType(s, AugmentedDataType(dt, IsStrict), ref)
     }
   }
+
+  /**
+   * Unconditionnally wraps the content of the augmented dataframe into a structure. It does not
+   * attempt to unpack single fields.
+   */
+  def asWrappedColumn(adf : DataFrameWithType): Column = {
+    // Put everything in a struct, because this is the original type.
+    logger.debug(s"asColumn: adf=$adf ")
+    val colNames = adf.df.schema.fieldNames.toSeq
+    logger.debug(s"asColumn: colNames=$colNames")
+    val cols = colNames.map(n => adf.df.col(n))
+    logger.debug(s"asColumn: cols=$cols")
+    sqlStruct(cols: _*)
+
+  }
 }
 
 // The result of an execution item.

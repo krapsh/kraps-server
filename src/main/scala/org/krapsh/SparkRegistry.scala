@@ -1,17 +1,16 @@
 package org.krapsh
 
 import scala.collection.JavaConversions._
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
+
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import spray.json.{JsArray, JsObject, JsString, JsValue}
+import spray.json.JsString
+
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.krapsh.row.{AlgebraicRow, RowArray, RowCell}
-import spray.json.{JsArray, JsObject, JsValue}
-import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
+
+import org.krapsh.row.RowCell
 import org.krapsh.ops.{ColumnTransforms, GroupedReduction}
 import org.krapsh.row.{AlgebraicRow, RowArray}
 import org.krapsh.structures._
@@ -251,7 +250,6 @@ object SparkRegistry extends Logging {
     res
   }
 
-
   val all = Seq(
     autocache,
     cache,
@@ -279,8 +277,4 @@ object SparkRegistry extends Logging {
   def setup(): Unit = {
     all.foreach(registry.addOp)
   }
-}
-
-object SparkSelector extends Logging {
-
 }
