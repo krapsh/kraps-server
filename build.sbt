@@ -6,7 +6,7 @@ sparkVersion := "2.0.0"
 
 scalaVersion := "2.11.7"
 
-spName := "krapsh/krapsh-server"
+spName := "krapsh/kraps-server"
 
 // Don't forget to set the version
 version := s"0.1.9"
