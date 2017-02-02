@@ -58,6 +58,10 @@ object AlgebraicRow {
         Ordering.String.compare(s1, s2)
       case (StringElement(_), _) => 1
       case (_, StringElement(_)) => -1
+      case (BoolElement(b1), BoolElement(b2)) =>
+        Ordering.Boolean.compare(b1, b2)
+      case (BoolElement(_), _) => 1
+      case (_, BoolElement(_)) => -1
       case (RowArray(seq1), RowArray(seq2)) =>
         cellsOrdering.compare(seq1, seq2)
       case (RowArray(_), _) => 1
@@ -76,6 +80,7 @@ object AlgebraicRow {
     case StringElement(s) => s
     case RowArray(s) => s.map(toAny)
     case RowCell(r) => toRow(r)
+    case BoolElement(b) => b
   }
 
   private def from(x: Any, dt: DataType): Try[Cell] = (x, dt) match {
