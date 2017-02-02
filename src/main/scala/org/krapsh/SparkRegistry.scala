@@ -2,16 +2,14 @@ package org.krapsh
 
 import scala.collection.JavaConversions._
 import scala.util.{Failure, Success}
-
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import spray.json.JsString
-
+import org.apache.spark.SparkContext
+import spray.json.{JsString, JsValue}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-
 import org.krapsh.row.RowCell
-import org.krapsh.ops.{ColumnTransforms, GroupedReduction}
+import org.krapsh.ops.{ColumnTransforms, GroupedReduction, Readers, TypeConversions}
 import org.krapsh.row.{AlgebraicRow, RowArray}
 import org.krapsh.structures._
 
@@ -179,6 +177,38 @@ object SparkRegistry extends Logging {
     adf.df.unpersist(blocking = true)
     adf
   }
+
+  val inferSchema = new OpBuilder {
+    override def op = "org.spark.InferSchema"
+    override def build(
+        p: Seq[ExecutionOutput],
+        ex: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      require(p.isEmpty, (ex, p))
+      val reader = session.read
+      val df = Readers.buildDF(reader, ex).get
+      // We only get the schema here.
+      val schema = df.schema
+      val r = TypeConversions.toRow(schema)
+      val r2 = AlgebraicRow.toRow(r)
+      val df2 = session.sqlContext.createDataFrame(Seq(r2), TypeConversions.typeStructure)
+      DataFrameWithType(df2, AugmentedDataType(TypeConversions.typeStructure, IsStrict))
+    }
+  }
+
+  val dataSource = new OpBuilder {
+    override def op = "org.spark.GenericDatasource"
+    override def build(
+        p: Seq[ExecutionOutput],
+        ex: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      require(p.isEmpty, (ex, p))
+      val reader = session.read
+      val df = Readers.buildDF(reader, ex).get
+      DataFrameWithType(df, AugmentedDataType(df.schema, IsStrict))
+    }
+  }
+
 
   val identity = createBuilderD("org.spark.Identity") { (df, _) => df }
 

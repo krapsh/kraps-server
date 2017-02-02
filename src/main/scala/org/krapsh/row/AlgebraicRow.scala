@@ -16,6 +16,7 @@ sealed trait Cell
 case object Empty extends Cell // The null elements
 case class IntElement(i: Int) extends Cell
 case class StringElement(s: String) extends Cell
+case class BoolElement(b: Boolean) extends Cell
 // Unlike the haskell code, we need to make a distinction between the
 // row and the array case during the reconstruction.
 case class RowArray(seq: Seq[Cell]) extends Cell

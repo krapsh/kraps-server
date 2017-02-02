@@ -223,6 +223,13 @@ object JsonSparkConversions {
     case Some(x) => Failure(new Exception(s"Wrong value $x for key $key in $m"))
   }
 
+  def getObject(m: Map[String, JsValue], key: String): Try[JsObject] = {
+    getFlatten(m, key) {
+      case x: JsObject => Success(x)
+      case x => Failure(new Exception(s"Expected object, got $x"))
+    }
+  }
+
   def getFlatten[X](m: Map[String, JsValue], key: String)(f: JsValue => Try[X]): Try[X] = {
     m.get(key) match {
       case None => Failure(new Exception(s"Missing key $key in $m"))
