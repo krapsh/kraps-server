@@ -32,6 +32,7 @@ case class UntypedNodeJson(
 case class ComputationResultJson(
     status: String, // scheduled, running, finished_success, finished_failure
     finalError: Option[String], // TODO: better formatting
+    // TODO: use cellWithType instead
     finalResult: JsValue) extends Serializable
 
 object ComputationResultJson {

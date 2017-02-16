@@ -131,7 +131,8 @@ object SparkRegistry extends Logging {
     }
     val session = SparkSession.builder().getOrCreate()
     logger.debug(s"constant: data=$cellCol")
-    val df = session.createDataFrame(cellCol.normalizedData, cellCol.normalizedCellDataType)
+    val rows = cellCol.normalizedData.map(AlgebraicRow.toRow)
+    val df = session.createDataFrame(rows, cellCol.normalizedCellDataType)
     logger.debug(s"constant: created dataframe: df=$df cellDT=${cellCol.cellDataType}")
     DataFrameWithType(df, cellCol.cellDataType)
   }

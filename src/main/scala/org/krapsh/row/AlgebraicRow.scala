@@ -3,6 +3,8 @@ package org.krapsh.row
 
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
+import org.krapsh.structures.{AugmentedDataType, IsNullable}
+import spray.json.{JsArray, JsNull, JsNumber, JsObject, JsString, JsValue}
 
 import scala.util.{Failure, Success, Try}
 
@@ -24,7 +26,7 @@ case class RowCell(r: AlgebraicRow) extends Cell
 
 object AlgebraicRow {
 
-  import org.krapsh.structures.JsonSparkConversions.sequence
+  import org.krapsh.structures.JsonSparkConversions.{sequence, get}
 
   def fromRow(r: Row, st: StructType): Try[AlgebraicRow] = {
     from(r.toSeq, st) match {
@@ -35,6 +37,71 @@ object AlgebraicRow {
   }
 
   def toRow(ar: AlgebraicRow): Row = Row(ar.cells.map(toAny):_*)
+
+  def fromJson(js: JsValue, adt: AugmentedDataType): Try[Cell] = {
+    if (adt.nullability == IsNullable) {
+      deserializeCompactOption(adt.dataType, js)
+    } else {
+      deserializeCompact0(adt.dataType, js)
+    }
+  }
+
+  private def deserializeCompactOption(
+      dt: DataType,
+      data: JsValue): Try[Cell] = {
+    if (data == JsNull) {
+      Success(Empty)
+    } else {
+      deserializeCompact0(dt, data)
+    }
+  }
+
+  private def deserializeCompact0(dt: DataType, data: JsValue): Try[Cell] = {
+    (dt, data) match {
+      case (_: IntegerType, JsNumber(n)) => Success(IntElement(n.toInt))
+      case (_: DoubleType, JsNumber(n)) => Success(IntElement(n.toInt))
+      case (_: StringType, JsString(s)) => Success(StringElement(s))
+      case (at: ArrayType, JsArray(arr)) =>
+        if (at.containsNull) {
+          val s = arr.map(e => deserializeCompactOption(at.elementType, e))
+          sequence(s).map(RowArray.apply)
+        } else {
+          sequence(arr.map(e => deserializeCompact0(at.elementType, e)))
+            .map(RowArray.apply)
+        }
+
+      case (st: StructType, JsArray(arr)) =>
+        if (st.fields.size != arr.size) {
+          Failure(new Exception(s"Different sizes: $st, $arr"))
+        } else {
+          val fields = st.fields.zip(arr).map { case (f, e) =>
+            if (f.nullable) {
+              deserializeCompactOption(f.dataType, e)
+            } else {
+              deserializeCompact0(f.dataType, e)
+            }
+          }
+          sequence(fields).map(seq => RowCell(AlgebraicRow(seq)))
+        }
+
+      case (st: StructType, obj: JsObject) => deserializeObject(st, obj)
+
+      case _ => Failure(new Exception(s"Cannot interpret data type $dt with $data"))
+    }
+  }
+
+  // Some special case to allow more flexible input.
+  private def deserializeObject(st: StructType, js: JsObject): Try[Cell] = {
+    sequence(st.fields.map { f =>
+      val fun = if (f.nullable) {deserializeCompactOption _ } else { deserializeCompact0 _ }
+      for {
+        x <- get(js.fields, f.name)
+        y <- fun(f.dataType, x)
+      } yield {
+        y
+      }
+    }).map(s => RowCell(AlgebraicRow(s)))
+  }
 
   private def cellsOrdering = Ordering.Iterable[Cell](CellOrdering)
 
