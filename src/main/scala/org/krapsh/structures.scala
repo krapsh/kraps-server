@@ -1,8 +1,9 @@
 package org.krapsh
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-
 import org.apache.spark.sql.Row
+import org.krapsh.row.AlgebraicRow
+import org.krapsh.structures.CellWithType
 
 /**
  * The identifier of a spark session.
@@ -144,9 +145,9 @@ class ResultCache(
 
   def status(p: GlobalPath): Option[ComputationResult] = map.get(p)
 
-  def finalResult(path: GlobalPath): Option[Row] = {
+  def finalResult(path: GlobalPath): Option[CellWithType] = {
     map.get(path) match {
-      case Some(ComputationDone(row)) => Some(row)
+      case Some(ComputationDone(cell)) => Some(cell)
       case _ => None
     }
   }
@@ -180,5 +181,6 @@ case object Local extends Locality
 sealed trait ComputationResult
 case object ComputationScheduled extends ComputationResult
 case object ComputationRunning extends ComputationResult
-case class ComputationDone(result: Row) extends ComputationResult
+// Using algebraic rows to maximize the correctness of the resulting computations.
+case class ComputationDone(result: CellWithType) extends ComputationResult
 case class ComputationFailed(msg: Throwable) extends ComputationResult

@@ -40,13 +40,8 @@ class ExecutionItem(
     logger.debug(s"Creating dataframe for node: $path, results=${cache}")
     val outputs = dependencies.map { item =>
 
-      cacheAsUsed.finalResult(item.path).map { row =>
-        val ct = CellWithType.fromRow(row, item.rectifiedDataFrameSchema) match {
-          case Success(x) => x
-          case Failure(e) => throw e
-        }
-        LocalExecOutput(ct)
-      } .getOrElse(DisExecutionOutput(item.dataframeWithType))
+      cacheAsUsed.finalResult(item.path).map(LocalExecOutput.apply)
+        .getOrElse(DisExecutionOutput(item.dataframeWithType))
     }
     logger.debug(s"Dependent outputs for node: $path: $outputs")
     builder.build(outputs, raw.extra, session)

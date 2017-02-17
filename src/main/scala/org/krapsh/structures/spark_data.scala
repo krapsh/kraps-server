@@ -9,11 +9,14 @@
 //    that the data can be converted back and forth.
 package org.krapsh.structures
 
-import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue}
+import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, RootJsonWriter}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.types._
 import org.krapsh.row.{AlgebraicRow, Cell, RowArray, RowCell}
+import spray.json.DefaultJsonProtocol._
+import spray.json._
+import DefaultJsonProtocol._ // if you don't supply your own Protocol (see below)
 
 import scala.util.{Failure, Success, Try}
 
@@ -83,23 +86,54 @@ case class CellWithType(cellData: Cell, cellType: AugmentedDataType) {
     LocalSparkConversion.normalizeDataTypeIfNeeded(cellType)
 
   lazy val row: GenericRowWithSchema = {
-    new GenericRowWithSchema(Array(cellData), rowType)
+    new GenericRowWithSchema(Array(Cell.toAny(cellData)), rowType)
   }
 }
 
 object CellWithType {
-  // Takes data, wrapped as a row following the normalization process, and exposes it
-  // again as a piece of data usable by krapsh.
-  def fromRow(row: Row, dt: AugmentedDataType): Try[CellWithType] = {
-    // It should always have a single field for typed cells.
-    dt match {
-      case AugmentedDataType(st: StructType, IsStrict) =>
-        for(ar <- AlgebraicRow.fromRow(row, st)) yield {
-          CellWithType(RowCell(ar), dt)
-        }
-      case _ =>
-        Failure(new Exception(s"Expected a strict struct type, got $dt"))
+  import JsonSparkConversions.get
+
+  /**
+   * Takes some data that may have been normalized, and attempts to expose it as unnormalized
+   * data again.
+   */
+  def denormalizeFromRow(row: Row, dt: AugmentedDataType): Try[CellWithType] = {
+    // This should be the structure being used.
+    val st = LocalSparkConversion.normalizeDataTypeIfNeeded(dt)
+    val ct = AlgebraicRow.fromRow(row, st).flatMap { ar =>
+      if (dt.isPrimitive) {
+        AlgebraicRow.denormalize(ar)
+      } else {
+        Success(RowCell(ar))
+      }
     }
+    for (cell <- ct) yield { CellWithType(cell, dt) }
+  }
+
+  implicit object CellJsonFormat extends RootJsonFormat[CellWithType] {
+    override def write(c: CellWithType) = JsObject(Map(
+      "type" -> JsonSparkConversions.serializeDataType(c.cellType),
+      "content" -> Cell.toJson(c.cellData)
+    ))
+
+    override def read(json: JsValue): CellWithType =
+      throw new Exception()
+  }
+
+
+  // In every case, it wraps the content in an object.
+  def deserializeLocal(js: JsValue): Try[CellWithType] = js match {
+    case JsObject(m) =>
+      for {
+        tp <- get(m, "type")
+        ct <- get(m, "content")
+        adt <- JsonSparkConversions.deserializeDataType(tp)
+        value <- Cell.fromJson(ct, adt)
+      } yield {
+        CellWithType(value, adt)
+      }
+    case x: Any =>
+      Failure(new Exception(s"not an object: $x"))
   }
 }
 
@@ -122,6 +156,16 @@ object JsonSparkConversions {
         AugmentedDataType(dt, b)
       }
     case x => Failure(new Exception(s"expected object, got $x"))
+  }
+
+  def serializeDataType(adt: AugmentedDataType): JsValue = {
+    // First compute the type to JSON and then parse it again.
+    // This is not pretty, but it should work in any case:
+    val js = adt.dataType.json.parseJson
+    JsObject(Map(
+      "nullable" -> JsBoolean(adt.isNullable),
+      "dt" -> js
+    ))
   }
 
   def sequence[T](xs : Seq[Try[T]]) : Try[Seq[T]] = (Try(Seq[T]()) /: xs) {
@@ -206,7 +250,7 @@ object LocalSparkConversion {
         tp <- get(m, "type")
         ct <- get(m, "content")
         adt <- JsonSparkConversions.deserializeDataType(tp)
-        value <- AlgebraicRow.fromJson(ct, adt)
+        value <- Cell.fromJson(ct, adt)
       } yield {
         CellWithType(value, adt)
       }
@@ -282,7 +326,7 @@ object DistributedSparkConversion {
       celldt: AugmentedDataType,
       cells: JsValue): Try[Seq[Cell]] = cells match {
     case JsArray(arr) =>
-      sequence(arr.map(e => AlgebraicRow.fromJson(e, celldt)))
+      sequence(arr.map(e => Cell.fromJson(e, celldt)))
     case x =>
       Failure(new Exception(s"Not an array: $x"))
   }

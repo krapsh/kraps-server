@@ -25,8 +25,10 @@ object Readers {
           inputSource <- getString(m, "inputSource")
           reader2 <- addOptions(reader, o)
           reader3 <- addSchema(reader2, m)
+          // This can blow up badly if the file does not exist
+          res <- Try(reader3.format(inputSource).load(inputPath))
         } yield {
-          reader3.format(inputSource).load(inputPath)
+          res
         }
       case x => Failure(new Exception(s"Expected dictionary, got $x"))
     }

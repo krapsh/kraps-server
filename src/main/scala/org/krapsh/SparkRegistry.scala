@@ -8,11 +8,38 @@ import spray.json.{JsString, JsValue}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.krapsh.row.RowCell
+import org.krapsh.row.{AlgebraicRow, Cell, RowArray, RowCell}
 import org.krapsh.ops.{ColumnTransforms, GroupedReduction, Readers, TypeConversions}
-import org.krapsh.row.{AlgebraicRow, RowArray}
 import org.krapsh.structures._
 
+object UDF {
+  /**
+   * A wrapper for functions that manipulate algebraic rows.
+   *
+   * TODO: this is unfinished business.
+   * @param startType
+   * @param endType
+   * @param fun
+   * @return
+   */
+  def wrapFun(
+      startType: AugmentedDataType,
+      endType: AugmentedDataType)(fun: Cell => Cell): Column => Column = {
+    def fun2(r: Row, st: StructType): Any = {
+      val c2 = AlgebraicRow.fromRow(r, st) match {
+        case Success(AlgebraicRow(Seq(c))) =>
+          fun(c)
+        case e =>
+          throw new Exception(s"Could not convert $r of type $st: $e")
+      }
+      Cell.toAny(c2)
+    }
+    // Output type may be wrong here.
+
+    val localUdf = org.apache.spark.sql.functions.udf(???, endType.dataType)
+    ???
+  }
+}
 
 object SparkRegistry extends Logging {
   import GlobalRegistry._
@@ -29,13 +56,13 @@ object SparkRegistry extends Logging {
       val ar2 = AlgebraicRow.fromRow(r, st) match {
         case Success(AlgebraicRow(Seq(RowArray(seq)))) =>
           println(s">>orderRowElements: seq=$seq")
-          val s = seq.sorted(AlgebraicRow.CellOrdering)
+          val s = seq.sorted(Cell.CellOrdering)
           println(s">>orderRowElements: s=$s")
           RowArray(s)
         case e =>
           throw new Exception(s"Could not convert $r of type $st: $e")
       }
-      val arr = AlgebraicRow.toAny(ar2)
+      val arr = Cell.toAny(ar2)
       println(s">>orderRowElements: arr=$arr")
       arr
     }
@@ -67,7 +94,7 @@ object SparkRegistry extends Logging {
         case e =>
           throw new Exception(s"Could not convert $r of type $st: $e")
       }
-      val arr = AlgebraicRow.toAny(ar2)
+      val arr = Cell.toAny(ar2)
       println(s">>unpackRowElements: arr=$arr")
       arr
     }

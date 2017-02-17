@@ -1,7 +1,6 @@
 package org.krapsh
 
 import scala.collection.JavaConverters._
-import scala.reflect.ClassTag
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import spray.json.JsValue
 import org.apache.spark.sql.functions._
@@ -9,6 +8,7 @@ import org.apache.spark.sql.functions.{struct => sqlStruct}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql._
 import org.krapsh.ops.Extraction
+import org.krapsh.row.Cell
 import org.krapsh.structures.{AugmentedDataType, CellWithType, IsStrict, UntypedNodeJson}
 
 import scala.util.{Failure, Success, Try}
@@ -33,6 +33,18 @@ case class DataFrameWithType(df: DataFrame, rectifiedSchema: AugmentedDataType)
 object DataFrameWithType extends Logging {
   def create(df: DataFrame): DataFrameWithType = {
     DataFrameWithType(df, AugmentedDataType(df.schema, IsStrict))
+  }
+
+  /**
+   * Creates a DFWT, assuming that the content of the dataframe is a single column that contains
+   * a single row only.
+   */
+  def createDenormalized(df: DataFrame): Try[DataFrameWithType] = {
+    df.schema.fields match {
+      case Array(f) =>
+        Success(DataFrameWithType(df, AugmentedDataType.fromField(f)))
+      case x => Failure(new Exception(s"Expected dataframe with single column, got type $df"))
+    }
   }
 
   def asColumn(adf: DataFrameWithType): Column = {
@@ -270,6 +282,7 @@ object GlobalRegistry extends Logging {
     def fun1(items: Seq[ExecutionOutput], jsValue: JsValue): DataFrameWithType = {
       items match {
         case Seq(DisExecutionOutput(adf1), DisExecutionOutput(adf2)) =>
+          // Result is distributed, no need to force denormalization?
           DataFrameWithType.create(fun(adf1.df, adf2.df, jsValue))
         case _ => throw new Exception(s"Unexpected input for op $opName: $items")
       }
@@ -286,36 +299,6 @@ object GlobalRegistry extends Logging {
       }
     }
     createBuilder(opName)(fun1)
-  }
-  /**
-   * Attempts to extract some data content from a row.
-   * For now, this only supports scalar values.
-   */
-  @throws[Exception]("when the specification is not respected")
-  def extract[T: ClassTag](tcell: CellWithType): T = {
-    tcell.cellType match {
-      case x: T => x
-      case x: Any =>
-        throw new Exception(
-          s"Cannot convert $x (${x.getClass}) to type ${implicitly[ClassTag[T]]}")
-    }
-  }
-
-  def createTypedLocalBuilder_2_1[I1: ClassTag, I2: ClassTag, O: Encoder](
-      opName: String)(fun: Function2[I1, I2, O]): OpBuilder = {
-    def fun1(
-        items: Seq[ExecutionOutput],
-        js: JsValue,
-        session: SparkSession): DataFrameWithType = {
-      items match {
-        case Seq(LocalExecOutput(tcell1), LocalExecOutput(tcell2)) =>
-          val i1 = extract[I1](tcell1)
-          val i2 = extract[I2](tcell2)
-          val res = fun(i1, i2)
-          DataFrameWithType.create(session.createDataset(Seq(res)).toDF())
-      }
-    }
-    createBuilderSession(opName)(fun1)
   }
 
   def createLocalBuilder2(opName: String)(fun: (Column, Column) => Column): OpBuilder = {
@@ -337,39 +320,44 @@ object GlobalRegistry extends Logging {
     createBuilderSession(opName)(fun1)
   }
 
-  private def buildLocalDF(items: Seq[ExecutionOutput], expectedNum: Int, session: SparkSession): DataFrame = {
+  private def buildLocalDF(
+      items: Seq[ExecutionOutput],
+      expectedNum: Int,
+      session: SparkSession): DataFrame = {
     require(items.size == expectedNum, s"Expected $expectedNum elts, but got $items")
     val tcells = items.map {
       case LocalExecOutput(tcell) => tcell
       case x => throw new Exception(s"Expected a local output, got $x")
     }
     val fs = tcells.zipWithIndex.map { case (tcell, idx) =>
-      logger.debug(s"idx=$idx tcell=$tcell rowType=${tcell.rowType}")
+      logger.debug(s"buildLocalDF: idx=$idx tcell=$tcell rowType=${tcell.rowType}")
       tcell.rowType match {
         case StructType(Array(f)) => f.copy(name = s"_${idx + 1}")
         case x => throw new Exception(s"expected single field, got $tcell")
       }
     }
     val s = StructType(fs)
-    logger.debug(s"createLocalBuilder2: s=$s")
-    val rdata = tcells.map(_.cellData)
+    // TODO: use a cell collection to build a row here. This is error-prone.
+    logger.debug(s"buildLocalDF: s=$s")
+    val rdata = tcells.map(tc => Cell.toAny(tc.cellData))
     val r = Row(rdata: _*)
-    logger.debug(s"createLocalBuilder2: r=$r")
+    logger.debug(s"buildLocalDF: r=$r")
     val df = session.createDataFrame(Seq(r).asJava, s)
-    logger.debug(s"createLocalBuilder2: df=$df")
+    logger.debug(s"buildLocalDF: df=$df")
     df
   }
 
   private def buildLocalDF2(df: DataFrame, c: Column): DataFrameWithType = {
     val dfout = df.select(c)
-    logger.debug(s"createLocalBuilder2: dfout=$dfout")
+    logger.debug(s"buildLocalDF2: dfout=$dfout")
     // TODO: all below is just for debugging
     val res = dfout.collect()
     val out = res match {
       case Array(Row(x)) =>
       case _ => throw new Exception(s"Expected single row in $res")
     }
-    DataFrameWithType.create(dfout)
+    // It is local, the
+    DataFrameWithType.createDenormalized(dfout).get
   }
 }
 

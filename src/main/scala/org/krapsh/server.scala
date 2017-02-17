@@ -86,14 +86,14 @@ trait MyService extends HttpService with Logging {
         }
       }
     } ~
-    path("session" / Segment / "create") { sessionIdTxt =>
+    path("sessions" / Segment / "create") { sessionIdTxt =>
       val sessionId = SessionId(sessionIdTxt)
       post {
         manager.create(sessionId)
         complete("xxx")
       }
     } ~
-    path("resource_status" / Segment ) { sessionIdTxt =>
+    path("resources_status" / Segment ) { sessionIdTxt =>
       val sessionId = SessionId(sessionIdTxt)
 
       post {
@@ -106,7 +106,7 @@ trait MyService extends HttpService with Logging {
         }
       }
     } ~
-    path("session" / Segment ) { sessionIdTxt => // TOOD: that one is useless
+    path("sessions" / Segment ) { sessionIdTxt => // TOOD: that one is useless
       val sessionId = SessionId(sessionIdTxt)
 
       get {
@@ -115,7 +115,7 @@ trait MyService extends HttpService with Logging {
         }
       }
     } ~
-    path("computation" / Segment / Segment / "create") { (sessionIdTxt, computationIdTxt) =>
+    path("computations" / Segment / Segment / "create") { (sessionIdTxt, computationIdTxt) =>
       val sessionId = SessionId(sessionIdTxt)
       val computationId = ComputationId(computationIdTxt)
 
@@ -126,7 +126,7 @@ trait MyService extends HttpService with Logging {
         }
       }
     } ~
-    path("computation_status" / Segment / Segment / Rest ) {
+    path("computations_status" / Segment / Segment / Rest ) {
         (sessionIdTxt, computationIdTxt, rest) =>
       val sessionId = SessionId(sessionIdTxt)
       val computationId = ComputationId(computationIdTxt)

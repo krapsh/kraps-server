@@ -4,7 +4,8 @@ import java.util.concurrent.Executors
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.apache.spark.sql.Row
-import org.krapsh.structures.{UntypedNodeJson, UntypedNodeJson2}
+import org.krapsh.row.AlgebraicRow
+import org.krapsh.structures._
 
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -38,11 +39,11 @@ class KSession(val id: SessionId) extends Logging {
 
   def status(p: GlobalPath): Option[ComputationResult] = state.results.status(p)
 
-  private def notifyFinished(path: GlobalPath, result: Try[Row]): Unit = synchronized {
+  private def notifyFinished(path: GlobalPath, result: Try[CellWithType]): Unit = synchronized {
     result match {
-      case Success(row) =>
+      case Success(cwt) =>
         logger.debug(s"Item $path finished with a success")
-        state = state.updateResult(path, ComputationDone(row))
+        state = state.updateResult(path, ComputationDone(cwt))
       case Failure(e: KrapshException) =>
         logger.debug(s"Item $path finished with an identified internal failure: $e")
         state = state.updateResult(path, ComputationFailed(e))
@@ -148,7 +149,11 @@ object KSession extends Logging {
         val rows = item.collected
         logger.debug(s"Got rows: $rows")
         val head = rows.head
-        session.notifyFinished(item.path, Success(head))
+        // Convert back to a cell associated to the overall type.
+        // We could get the struct type from the dataframe, but as an extra precaution, it is
+        // recomputed from the rectified schema.
+        val cwt = CellWithType.denormalizeFromRow(head, item.rectifiedDataFrameSchema)
+        session.notifyFinished(item.path, cwt)
       } catch {
         case NonFatal(e) =>
           session.notifyFinished(item.path, Failure(e))
