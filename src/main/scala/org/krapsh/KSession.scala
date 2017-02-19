@@ -23,7 +23,8 @@ class KSession(val id: SessionId) extends Logging {
 
   private val executor = Executors.newSingleThreadExecutor()
 
-  private var state = State(new ResultCache, Map.empty)
+  @volatile
+  private[this] var state = State(new ResultCache, Map.empty)
 
   def compute(
       compId: ComputationId,
@@ -34,6 +35,7 @@ class KSession(val id: SessionId) extends Logging {
     logger.debug(s"Getting computation info (parsed and sorted):\n" + items.map(_.path))
     val computation = Computation.create(compId, items)
     state = state.add(compId, computation)
+    logger.debug("compute: state is " + state)
     update()
   }
 
@@ -107,10 +109,11 @@ object KSession extends Logging {
       // Adding all the tracked nodes to the state as scheduled, so that inbound
       // state requests can already come in while spark finishes to initialize.
       val stateUp = computation.trackedItems.map(item => item.path -> ComputationScheduled)
+      val up = results.update(stateUp)
 
       copy(
         queue = queue + (computationId -> computation),
-        results = results.update(stateUp))
+        results = up)
     }
 
     def updateResults(up: Seq[(GlobalPath, ComputationResult)]): State = {
