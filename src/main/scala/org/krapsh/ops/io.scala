@@ -100,8 +100,11 @@ object TypeConversions {
   private def toRows(
       dt: DataType, nl: Nullable, path: Seq[String], pos: Int): Seq[Cell] = dt match {
     case IntegerType => prim(0, nl, path, pos)
+    // TODO: this is a shortcut for the long data for now.
+    case LongType => prim(0, nl, path, pos)
     case StringType => prim(1, nl, path, pos)
     case BooleanType => prim(2, nl, path, pos)
+
 
     case st: StructType =>
       val names = st.fields.map { f => StringElement(f.name) }

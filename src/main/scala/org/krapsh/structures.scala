@@ -151,8 +151,6 @@ class ResultCache(
   private val latestValues: Map[(SessionId, Path), ComputationId] = Map.empty) extends Logging {
 
   def status(p: GlobalPath): Option[ComputationResult] = {
-    logger.debug(s"Request for status: p=$p")
-    logger.debug(s"cache = $this")
     if (p.computation == ComputationId.UnknownComputation) {
       latestValues.get((p.session, p.local)).flatMap { cid =>
         map.get(p.copy(computation = cid))
@@ -183,7 +181,6 @@ class ResultCache(
   }
 
   private def update(path: GlobalPath, computationResult: ComputationResult): ResultCache = {
-    logger.debug(s"New result for $path: $computationResult")
     val m = map + (path -> computationResult)
     val latest = latestValues.get(path.session -> path.local) match {
         // We have seen a younger value.
