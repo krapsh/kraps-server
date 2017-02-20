@@ -2,19 +2,44 @@ package org.krapsh
 
 import scala.collection.JavaConversions._
 import scala.util.{Failure, Success}
-
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import spray.json.JsString
-
+import org.apache.spark.SparkContext
+import spray.json.{JsString, JsValue}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-
-import org.krapsh.row.RowCell
-import org.krapsh.ops.{ColumnTransforms, GroupedReduction}
-import org.krapsh.row.{AlgebraicRow, RowArray}
+import org.krapsh.row.{AlgebraicRow, Cell, RowArray, RowCell}
+import org.krapsh.ops.{ColumnTransforms, GroupedReduction, Readers, TypeConversions}
 import org.krapsh.structures._
 
+object UDF {
+  /**
+   * A wrapper for functions that manipulate algebraic rows.
+   *
+   * TODO: this is unfinished business.
+   * @param startType
+   * @param endType
+   * @param fun
+   * @return
+   */
+  def wrapFun(
+      startType: AugmentedDataType,
+      endType: AugmentedDataType)(fun: Cell => Cell): Column => Column = {
+    def fun2(r: Row, st: StructType): Any = {
+      val c2 = AlgebraicRow.fromRow(r, st) match {
+        case Success(AlgebraicRow(Seq(c))) =>
+          fun(c)
+        case e =>
+          throw new Exception(s"Could not convert $r of type $st: $e")
+      }
+      Cell.toAny(c2)
+    }
+    // Output type may be wrong here.
+
+    val localUdf = org.apache.spark.sql.functions.udf(???, endType.dataType)
+    ???
+  }
+}
 
 object SparkRegistry extends Logging {
   import GlobalRegistry._
@@ -31,13 +56,13 @@ object SparkRegistry extends Logging {
       val ar2 = AlgebraicRow.fromRow(r, st) match {
         case Success(AlgebraicRow(Seq(RowArray(seq)))) =>
           println(s">>orderRowElements: seq=$seq")
-          val s = seq.sorted(AlgebraicRow.CellOrdering)
+          val s = seq.sorted(Cell.CellOrdering)
           println(s">>orderRowElements: s=$s")
           RowArray(s)
         case e =>
           throw new Exception(s"Could not convert $r of type $st: $e")
       }
-      val arr = AlgebraicRow.toAny(ar2)
+      val arr = Cell.toAny(ar2)
       println(s">>orderRowElements: arr=$arr")
       arr
     }
@@ -69,7 +94,7 @@ object SparkRegistry extends Logging {
         case e =>
           throw new Exception(s"Could not convert $r of type $st: $e")
       }
-      val arr = AlgebraicRow.toAny(ar2)
+      val arr = Cell.toAny(ar2)
       println(s">>unpackRowElements: arr=$arr")
       arr
     }
@@ -133,7 +158,8 @@ object SparkRegistry extends Logging {
     }
     val session = SparkSession.builder().getOrCreate()
     logger.debug(s"constant: data=$cellCol")
-    val df = session.createDataFrame(cellCol.normalizedData, cellCol.normalizedCellDataType)
+    val rows = cellCol.normalizedData.map(AlgebraicRow.toRow)
+    val df = session.createDataFrame(rows, cellCol.normalizedCellDataType)
     logger.debug(s"constant: created dataframe: df=$df cellDT=${cellCol.cellDataType}")
     DataFrameWithType(df, cellCol.cellDataType)
   }
@@ -179,6 +205,52 @@ object SparkRegistry extends Logging {
     adf.df.unpersist(blocking = true)
     adf
   }
+
+  // A special op builder that simply wraps a result already computed.
+  def pointerOpBuilder(typedCell: CellWithType): OpBuilder = new OpBuilder {
+    override def op = "org.spark.PlaceholderCache"
+    override def build(
+        p: Seq[ExecutionOutput],
+        ex: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      val df = session.createDataFrame(Seq(typedCell.row), typedCell.rowType)
+      DataFrameWithType(df, typedCell.cellType)
+    }
+
+
+  }
+
+  val inferSchema = new OpBuilder {
+    override def op = "org.spark.InferSchema"
+    override def build(
+        p: Seq[ExecutionOutput],
+        ex: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      require(p.isEmpty, (ex, p))
+      val reader = session.read
+      val df = Readers.buildDF(reader, ex).get
+      // We only get the schema here.
+      val schema = df.schema
+      val r = TypeConversions.toRow(schema)
+      val r2 = AlgebraicRow.toRow(r)
+      val df2 = session.sqlContext.createDataFrame(Seq(r2), TypeConversions.typeStructure)
+      DataFrameWithType(df2, AugmentedDataType(TypeConversions.typeStructure, IsStrict))
+    }
+  }
+
+  val dataSource = new OpBuilder {
+    override def op = "org.spark.GenericDatasource"
+    override def build(
+        p: Seq[ExecutionOutput],
+        ex: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      require(p.isEmpty, (ex, p))
+      val reader = session.read
+      val df = Readers.buildDF(reader, ex).get
+      DataFrameWithType(df, AugmentedDataType(df.schema, IsStrict))
+    }
+  }
+
 
   val identity = createBuilderD("org.spark.Identity") { (df, _) => df }
 
@@ -255,8 +327,10 @@ object SparkRegistry extends Logging {
     cache,
     collect,
     constant,
+    dataSource,
     groupedReduction,
     identity,
+    inferSchema,
     join,
     localAbs,
     localConstant,

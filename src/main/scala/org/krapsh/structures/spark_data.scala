@@ -9,11 +9,14 @@
 //    that the data can be converted back and forth.
 package org.krapsh.structures
 
-import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue}
-
+import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, RootJsonWriter}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.types._
+import org.krapsh.row.{AlgebraicRow, Cell, RowArray, RowCell}
+import spray.json.DefaultJsonProtocol._
+import spray.json._
+import DefaultJsonProtocol._ // if you don't supply your own Protocol (see below)
 
 import scala.util.{Failure, Success, Try}
 
@@ -71,110 +74,71 @@ object AugmentedDataType {
 case class CellCollection(
     cellDataType: AugmentedDataType,
     normalizedCellDataType: StructType,
-    normalizedData: Seq[GenericRowWithSchema]) {
-}
+    normalizedData: Seq[AlgebraicRow])
 
 /**
  * A single cell. This is how an observable is represented.
  * @param cellData the data in the cell. It can contain nulls.
  * @param cellType the type of the cell.
  */
-case class CellWithType(cellData: Any, cellType: AugmentedDataType) {
+case class CellWithType(cellData: Cell, cellType: AugmentedDataType) {
   lazy val rowType: StructType =
     LocalSparkConversion.normalizeDataTypeIfNeeded(cellType)
 
   lazy val row: GenericRowWithSchema = {
-    new GenericRowWithSchema(Array(cellData), rowType)
+    new GenericRowWithSchema(Array(Cell.toAny(cellData)), rowType)
   }
 }
 
 object CellWithType {
-  // Takes data, wrapped as a row following the normalization process, and exposes it
-  // again as a piece of data usable by krapsh.
-  def fromRow(row: Row, dt: AugmentedDataType): Try[CellWithType] = {
-    // It should always have a single field for typed cells.
-    row match {
-      case Row(x: Any) => Success(CellWithType(x, dt))
-      case _ => Failure(new Exception(s"Cannot extract single row from $row, dt=$dt"))
+  import JsonSparkConversions.get
+
+  /**
+   * Takes some data that may have been normalized, and attempts to expose it as unnormalized
+   * data again.
+   */
+  def denormalizeFromRow(row: Row, dt: AugmentedDataType): Try[CellWithType] = {
+    // This should be the structure being used.
+    val st = LocalSparkConversion.normalizeDataTypeIfNeeded(dt)
+    val ct = AlgebraicRow.fromRow(row, st).flatMap { ar =>
+      if (dt.isPrimitive) {
+        AlgebraicRow.denormalize(ar)
+      } else {
+        Success(RowCell(ar))
+      }
     }
+    for (cell <- ct) yield { CellWithType(cell, dt) }
+  }
+
+  implicit object CellJsonFormat extends RootJsonFormat[CellWithType] {
+    override def write(c: CellWithType) = JsObject(Map(
+      "type" -> JsonSparkConversions.serializeDataType(c.cellType),
+      "content" -> Cell.toJson(c.cellData)
+    ))
+
+    override def read(json: JsValue): CellWithType =
+      throw new Exception()
+  }
+
+
+  // In every case, it wraps the content in an object.
+  def deserializeLocal(js: JsValue): Try[CellWithType] = js match {
+    case JsObject(m) =>
+      for {
+        tp <- get(m, "type")
+        ct <- get(m, "content")
+        adt <- JsonSparkConversions.deserializeDataType(tp)
+        value <- Cell.fromJson(ct, adt)
+      } yield {
+        CellWithType(value, adt)
+      }
+    case x: Any =>
+      Failure(new Exception(s"not an object: $x"))
   }
 }
 
 
 object JsonSparkConversions {
-
-  def deserializeCompact(adt: AugmentedDataType, data: JsValue): Try[Any] = {
-    if (adt.nullability == IsNullable) {
-      deserializeCompactOption(adt.dataType, data)
-    } else {
-      deserializeCompact0(adt.dataType, data)
-    }
-  }
-
-  private def deserializeCompact0(dt: DataType, data: JsValue): Try[Any] = {
-    (dt, data) match {
-      case (_: IntegerType, JsNumber(n)) => Success(n.toInt)
-      case (_: DoubleType, JsNumber(n)) => Success(n.toInt)
-      case (_: StringType, JsString(s)) => Success(s)
-      case (at: ArrayType, JsArray(arr)) =>
-        if (at.containsNull) {
-          val s = arr.map(e => deserializeCompactOption(at.elementType, e))
-          sequence(s)
-        } else {
-          sequence(arr.map(e => deserializeCompact0(at.elementType, e)))
-        }
-
-      case (st: StructType, JsArray(arr)) =>
-        if (st.fields.size != arr.size) {
-          Failure(new Exception(s"Different sizes: $st, $arr"))
-        } else {
-          val fields = st.fields.zip(arr).map { case (f, e) =>
-            if (f.nullable) {
-              deserializeCompactOption(f.dataType, e)
-            } else {
-              deserializeCompact0(f.dataType, e)
-            }
-          }
-          sequence(fields).map(Row.apply)
-        }
-
-      case (st: StructType, obj: JsObject) => deserializeObject(st, obj)
-
-      case _ => Failure(new Exception(s"Cannot interpret data type $dt with $data"))
-    }
-  }
-
-  // Some special case to allow more flexible input.
-  private def deserializeObject(st: StructType, js: JsObject): Try[Row] = {
-    sequence(st.fields.map { f =>
-      val fun = if (f.nullable) {deserializeCompactOption _ } else { deserializeCompact0 _ }
-      for {
-        x <- get(js.fields, f.name)
-        y <- fun(f.dataType, x)
-      } yield {
-        y
-      }
-    }).map(s => Row(s: _*))
-  }
-
-  // I think the options get replaced by nulls.
-  def serializeCompact(data: Any): Try[JsValue] = data match {
-    case null => Success(JsNull)
-    case None => Success(JsNull)
-    case Some(x) => serializeCompact(x)
-    case r: Row => serializeCompact(r.toSeq)
-    case seq: Seq[_] =>
-      val s = sequence(seq.map(serializeCompact))
-      s.map(s2 => JsArray(s2: _*))
-    case i: Int => Success(JsNumber(i))
-    case i: java.lang.Integer => Success(JsNumber(i))
-    case l: java.lang.Long => Success(JsNumber(l))
-    case d: Double => Success(JsNumber(d))
-    case d: java.lang.Double => Success(JsNumber(d))
-    case b: Boolean => Success(JsBoolean(b))
-    case s: String => Success(JsString(s))
-    case x: Any => Failure(new Exception(s"Match error type=${x.getClass} val=$x"))
-  }
 
   def deserializeDataType(js: JsValue): Try[AugmentedDataType] = js match {
     case JsObject(m) =>
@@ -194,14 +158,14 @@ object JsonSparkConversions {
     case x => Failure(new Exception(s"expected object, got $x"))
   }
 
-  private def deserializeCompactOption(
-      dt: DataType,
-      data: JsValue): Try[Option[Any]] = {
-    if (data == JsNull) {
-      Success(None)
-    } else {
-      deserializeCompact0(dt, data).map(Some.apply)
-    }
+  def serializeDataType(adt: AugmentedDataType): JsValue = {
+    // First compute the type to JSON and then parse it again.
+    // This is not pretty, but it should work in any case:
+    val js = adt.dataType.json.parseJson
+    JsObject(Map(
+      "nullable" -> JsBoolean(adt.isNullable),
+      "dt" -> js
+    ))
   }
 
   def sequence[T](xs : Seq[Try[T]]) : Try[Seq[T]] = (Try(Seq[T]()) /: xs) {
@@ -221,6 +185,13 @@ object JsonSparkConversions {
     case None => Failure(new Exception(s"Missing key $key in $m"))
     case Some(JsBoolean(b)) => Success(b)
     case Some(x) => Failure(new Exception(s"Wrong value $x for key $key in $m"))
+  }
+
+  def getObject(m: Map[String, JsValue], key: String): Try[JsObject] = {
+    getFlatten(m, key) {
+      case x: JsObject => Success(x)
+      case x => Failure(new Exception(s"Expected object, got $x"))
+    }
   }
 
   def getFlatten[X](m: Map[String, JsValue], key: String)(f: JsValue => Try[X]): Try[X] = {
@@ -279,7 +250,7 @@ object LocalSparkConversion {
         tp <- get(m, "type")
         ct <- get(m, "content")
         adt <- JsonSparkConversions.deserializeDataType(tp)
-        value <- JsonSparkConversions.deserializeCompact(adt, ct)
+        value <- Cell.fromJson(ct, adt)
       } yield {
         CellWithType(value, adt)
       }
@@ -287,21 +258,18 @@ object LocalSparkConversion {
       Failure(new Exception(s"not an object: $x"))
   }
 
-  // Expects an object around.
-  def serializeLocalCompact(row: Row): Try[JsValue] = row match {
-    case Row(Array(x)) =>
-      JsonSparkConversions.serializeCompact(x)
-    case z =>
-      Failure(new Exception(s"Not an object: $z"))
-  }
-
+  /**
+   * Takes an augmented data type and attempts to convert it to a top-level struct that is
+   * compatible with Spark data representation: strict top-level structures go through, everything
+   * else is wrapped in a top-level struct with a single field.
+   */
   def normalizeDataTypeIfNeeded(adt: AugmentedDataType): StructType = adt match {
     case AugmentedDataType(st: StructType, IsStrict) =>
       st
     case _ => normalizeDataType(adt)
   }
 
-  def normalizeDataType(adt: AugmentedDataType): StructType = {
+  private def normalizeDataType(adt: AugmentedDataType): StructType = {
     val f = StructField(
       "_1",
       adt.dataType, nullable = adt.nullability == IsNullable,
@@ -343,32 +311,34 @@ object DistributedSparkConversion {
         celldt <- JsonSparkConversions.deserializeDataType(tp)
         value <- deserializeSequenceCompact(celldt, ct)
       } yield {
-        normalize(celldt, value)
+        val rows = value.map(normalizeCell)
+        val st = LocalSparkConversion.normalizeDataTypeIfNeeded(celldt)
+        CellCollection(celldt, st, rows)
       }
     case x: Any =>
       Failure(new Exception(s"not an object: $x"))
   }
 
+  /**
+   * Deserializes the content of a sequence (which should be a sequence of cells)
+   */
   private def deserializeSequenceCompact(
       celldt: AugmentedDataType,
-      cells: JsValue): Try[Seq[Any]] = cells match {
+      cells: JsValue): Try[Seq[Cell]] = cells match {
     case JsArray(arr) =>
-      sequence(arr.map(e => JsonSparkConversions.deserializeCompact(celldt, e)))
+      sequence(arr.map(e => Cell.fromJson(e, celldt)))
     case x =>
       Failure(new Exception(s"Not an array: $x"))
   }
 
-  private def normalize(adt: AugmentedDataType, res: Seq[Any]): CellCollection = adt.dataType match {
-    case st: StructType =>
-      val rows = res.map {
-        case r: Row => new GenericRowWithSchema(r.toSeq.toArray, st)
-      }
-      CellCollection(adt, st, rows)
-    case _ =>
-      // We wrap.
-      val nf = normalizeDataType(adt)
-      val rows = res.map(e => new GenericRowWithSchema(Array(e), nf))
-      CellCollection(adt, nf, rows)
+  /**
+   * Takes a cell data and build a normalized representation of it: top-level rows go through,
+   * everything else is wrapped in a row.
+   * @param c
+   * @return
+   */
+  private def normalizeCell(c: Cell): AlgebraicRow = c match {
+    case RowCell(r) => r
+    case _ => AlgebraicRow(Seq(c))
   }
-
 }

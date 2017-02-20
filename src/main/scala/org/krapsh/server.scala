@@ -1,18 +1,17 @@
 package org.krapsh
 
 import scala.concurrent.duration._
-
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
+import org.krapsh.ops.{HdfsPath, HdfsResourceResult}
 import spray.can.Http
 import spray.http.MediaTypes._
 import spray.httpx.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
 import spray.routing._
-
 import org.krapsh.structures.{ComputationResultJson, UntypedNodeJson}
 
 
@@ -61,6 +60,7 @@ case class Person(name: String, favoriteNumber: Int)
 object KrapshServerImplicits extends DefaultJsonProtocol with SprayJsonSupport {
   implicit val PortofolioFormats = jsonFormat2(Person)
   implicit val UntypedNodeJsonF = jsonFormat7(UntypedNodeJson)
+  implicit val HdfsResourceResultF = jsonFormat3(HdfsResourceResult)
 }
 
 import KrapshServerImplicits._
@@ -86,14 +86,27 @@ trait MyService extends HttpService with Logging {
         }
       }
     } ~
-    path("session" / Segment / "create") { sessionIdTxt =>
+    path("sessions" / Segment / "create") { sessionIdTxt =>
       val sessionId = SessionId(sessionIdTxt)
       post {
         manager.create(sessionId)
         complete("xxx")
       }
     } ~
-    path("session" / Segment ) { sessionIdTxt => // TOOD: that one is useless
+    path("resources_status" / Segment ) { sessionIdTxt =>
+      val sessionId = SessionId(sessionIdTxt)
+
+      post {
+        entity(as[Seq[String]]) { paths =>
+          val ps = paths.map(HdfsPath.apply)
+          logger.debug(s"Requesting status for paths $ps")
+          val s = manager.resourceStatus(sessionId, ps)
+          s.foreach(st => logger.debug(s"Status received: $st"))
+          complete(s)
+        }
+      }
+    } ~
+    path("sessions" / Segment ) { sessionIdTxt => // TOOD: that one is useless
       val sessionId = SessionId(sessionIdTxt)
 
       get {
@@ -102,7 +115,7 @@ trait MyService extends HttpService with Logging {
         }
       }
     } ~
-    path("computation" / Segment / Segment / "create") { (sessionIdTxt, computationIdTxt) =>
+    path("computations" / Segment / Segment / "create") { (sessionIdTxt, computationIdTxt) =>
       val sessionId = SessionId(sessionIdTxt)
       val computationId = ComputationId(computationIdTxt)
 
@@ -113,7 +126,8 @@ trait MyService extends HttpService with Logging {
         }
       }
     } ~
-    path("status" / Segment / Segment / Rest ) { (sessionIdTxt, computationIdTxt, rest) =>
+    path("computations_status" / Segment / Segment / Rest ) {
+        (sessionIdTxt, computationIdTxt, rest) =>
       val sessionId = SessionId(sessionIdTxt)
       val computationId = ComputationId(computationIdTxt)
       val p = Path(rest.split("/"))

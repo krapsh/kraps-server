@@ -1,10 +1,10 @@
 package org.krapsh
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-
 import org.apache.spark.SparkContext
 import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted, SparkListenerStageSubmitted}
-
+import org.apache.spark.sql.SparkSession
+import org.krapsh.ops.{HdfsPath, HdfsResourceResult, SourceStamps}
 import org.krapsh.structures.UntypedNodeJson
 
 class KrapshListener(manager: Manager) extends SparkListener with Logging {
@@ -27,9 +27,12 @@ class Manager extends Logging {
 
   private var sessions: Map[SessionId, KSession] = Map.empty
   private lazy val listener = new KrapshListener(this)
+  // For now, there is a unique session for everything, but it should be split
+  // between each of the sessions.
+  private lazy val sparkSession = SparkSession.builder().getOrCreate()
 
   def init(): Unit = {
-    SparkContext.getOrCreate().addSparkListener(listener)
+    sparkSession.sparkContext.addSparkListener(listener)
   }
 
   def create(name: SessionId): Unit = synchronized {
@@ -51,5 +54,11 @@ class Manager extends Logging {
 
   def status(p: GlobalPath): Option[ComputationResult] = {
     sessions.get(p.session).flatMap(_.status(p))
+  }
+
+  def resourceStatus(session: SessionId, paths: Seq[HdfsPath]): Seq[HdfsResourceResult] = {
+    sessions.get(session)
+      .map(session => SourceStamps.getStamps(sparkSession, paths))
+      .getOrElse(Seq.empty)
   }
 }

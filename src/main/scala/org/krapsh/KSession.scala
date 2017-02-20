@@ -4,7 +4,8 @@ import java.util.concurrent.Executors
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.apache.spark.sql.Row
-import org.krapsh.structures.{UntypedNodeJson, UntypedNodeJson2}
+import org.krapsh.row.AlgebraicRow
+import org.krapsh.structures._
 
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -22,7 +23,8 @@ class KSession(val id: SessionId) extends Logging {
 
   private val executor = Executors.newSingleThreadExecutor()
 
-  private var state = State(new ResultCache, Map.empty)
+  @volatile
+  private[this] var state = State(new ResultCache, Map.empty)
 
   def compute(
       compId: ComputationId,
@@ -33,16 +35,17 @@ class KSession(val id: SessionId) extends Logging {
     logger.debug(s"Getting computation info (parsed and sorted):\n" + items.map(_.path))
     val computation = Computation.create(compId, items)
     state = state.add(compId, computation)
+    logger.debug("compute: state is " + state)
     update()
   }
 
   def status(p: GlobalPath): Option[ComputationResult] = state.results.status(p)
 
-  private def notifyFinished(path: GlobalPath, result: Try[Row]): Unit = synchronized {
+  private def notifyFinished(path: GlobalPath, result: Try[CellWithType]): Unit = synchronized {
     result match {
-      case Success(row) =>
+      case Success(cwt) =>
         logger.debug(s"Item $path finished with a success")
-        state = state.updateResult(path, ComputationDone(row))
+        state = state.updateResult(path, ComputationDone(cwt))
       case Failure(e: KrapshException) =>
         logger.debug(s"Item $path finished with an identified internal failure: $e")
         state = state.updateResult(path, ComputationFailed(e))
@@ -106,10 +109,11 @@ object KSession extends Logging {
       // Adding all the tracked nodes to the state as scheduled, so that inbound
       // state requests can already come in while spark finishes to initialize.
       val stateUp = computation.trackedItems.map(item => item.path -> ComputationScheduled)
+      val up = results.update(stateUp)
 
       copy(
         queue = queue + (computationId -> computation),
-        results = results.update(stateUp))
+        results = up)
     }
 
     def updateResults(up: Seq[(GlobalPath, ComputationResult)]): State = {
@@ -148,7 +152,11 @@ object KSession extends Logging {
         val rows = item.collected
         logger.debug(s"Got rows: $rows")
         val head = rows.head
-        session.notifyFinished(item.path, Success(head))
+        // Convert back to a cell associated to the overall type.
+        // We could get the struct type from the dataframe, but as an extra precaution, it is
+        // recomputed from the rectified schema.
+        val cwt = CellWithType.denormalizeFromRow(head, item.rectifiedDataFrameSchema)
+        session.notifyFinished(item.path, cwt)
       } catch {
         case NonFatal(e) =>
           session.notifyFinished(item.path, Failure(e))

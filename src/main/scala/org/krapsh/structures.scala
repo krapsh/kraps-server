@@ -1,8 +1,7 @@
 package org.krapsh
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-
-import org.apache.spark.sql.Row
+import org.krapsh.structures.CellWithType
 
 /**
  * The identifier of a spark session.
@@ -20,7 +19,13 @@ case class Path(repr: Seq[String]) extends AnyVal
  * The ID of a computation.
  * @param repr
  */
-case class ComputationId(repr: String) extends AnyVal
+case class ComputationId(repr: String) extends AnyVal {
+  def ranBefore(other: ComputationId): Boolean = repr < other.repr
+}
+
+object ComputationId {
+  val UnknownComputation = ComputationId("-1")
+}
 
 case class GlobalPath(
     session: SessionId,
@@ -140,13 +145,22 @@ object Computation {
 }
 
 class ResultCache(
-  private val map: Map[GlobalPath, ComputationResult] = Map.empty) extends Logging {
+  private val map: Map[GlobalPath, ComputationResult] = Map.empty,
+  private val latestValues: Map[(SessionId, Path), ComputationId] = Map.empty) extends Logging {
 
-  def status(p: GlobalPath): Option[ComputationResult] = map.get(p)
+  def status(p: GlobalPath): Option[ComputationResult] = {
+    if (p.computation == ComputationId.UnknownComputation) {
+      latestValues.get((p.session, p.local)).flatMap { cid =>
+        map.get(p.copy(computation = cid))
+      }
+    } else {
+      map.get(p)
+    }
+  }
 
-  def finalResult(path: GlobalPath): Option[Row] = {
+  def finalResult(path: GlobalPath): Option[CellWithType] = {
     map.get(path) match {
-      case Some(ComputationDone(row)) => Some(row)
+      case Some(ComputationDone(cell)) => Some(cell)
       case _ => None
     }
   }
@@ -154,19 +168,26 @@ class ResultCache(
   def update(ups: Seq[(GlobalPath, ComputationResult)]): ResultCache = {
     var m = this
     for ((p, cr) <- ups) {
-      m = this.update(p, cr)
+      // Do not forget this is fixed point...
+      m = m.update(p, cr)
     }
     m
   }
 
   override def toString: String = {
-    s"ResultCache: $map"
+    s"ResultCache: $map $latestValues"
   }
 
   private def update(path: GlobalPath, computationResult: ComputationResult): ResultCache = {
-    logger.debug(s"New result for $path: $computationResult")
     val m = map + (path -> computationResult)
-    new ResultCache(m)
+    val latest = latestValues.get(path.session -> path.local) match {
+        // We have seen a younger value.
+      case Some(x) if path.computation.ranBefore(x) => latestValues
+      case _ =>
+        // We got a new value, update the index
+        latestValues + ((path.session -> path.local) -> path.computation)
+    }
+    new ResultCache(m, latest)
   }
 }
 
@@ -180,5 +201,6 @@ case object Local extends Locality
 sealed trait ComputationResult
 case object ComputationScheduled extends ComputationResult
 case object ComputationRunning extends ComputationResult
-case class ComputationDone(result: Row) extends ComputationResult
+// Using algebraic rows to maximize the correctness of the resulting computations.
+case class ComputationDone(result: CellWithType) extends ComputationResult
 case class ComputationFailed(msg: Throwable) extends ComputationResult
