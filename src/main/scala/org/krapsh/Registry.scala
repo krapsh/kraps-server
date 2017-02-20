@@ -2,7 +2,7 @@ package org.krapsh
 
 import scala.collection.JavaConverters._
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import spray.json.JsValue
+import spray.json.{JsObject, JsValue}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.functions.{struct => sqlStruct}
 import org.apache.spark.sql.types.StructType
@@ -10,7 +10,9 @@ import org.apache.spark.sql._
 import org.krapsh.ops.Extraction
 import org.krapsh.row.Cell
 import org.krapsh.structures.{AugmentedDataType, CellWithType, IsStrict, UntypedNodeJson}
+import org.krapsh.structures.JsonSparkConversions
 
+import scala.util.parsing.json.JSONObject
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -176,7 +178,19 @@ class Registry extends Logging {
       val logicalDependencies = raw.logicalDependencies.map { path =>
         done.getOrElse(path, throw new Exception(s"Missing $path"))
       }
-      val b = ops.getOrElse(raw.op, throw new Exception(s"Operation ${raw.op} not registered"))
+      // Special case here for the pointer constants.
+      val builder = if (raw.op == "org.spark.PlaceholderCache") {
+        val c = cache()
+        val pointerPath = Registry.extractPointerPath(sessionId, raw.extra).get
+        val res = c.status(pointerPath) match {
+          case Some(d: ComputationDone) => d.result
+          case x => KrapshException.fail(
+            s"Expected a finished computation for $pointerPath, got $x")
+        }
+        SparkRegistry.pointerOpBuilder(res)
+      } else {
+        ops.getOrElse(raw.op, throw new Exception(s"Operation ${raw.op} not registered"))
+      }
       val locality = raw.locality match {
         case "local" => Local
         case "distributed" => Distributed
@@ -191,7 +205,8 @@ class Registry extends Logging {
         }
       }
       val path = GlobalPath(sessionId, computationId, p)
-      new ExecutionItem(parents, logicalDependencies, locality, path, cache, b, raw, sparkSession)
+      new ExecutionItem(parents, logicalDependencies, locality,
+        path, cache, builder, raw, sparkSession)
     }
 
     def getItems(
@@ -224,6 +239,21 @@ class Registry extends Logging {
       cache: () => ResultCache): Seq[ExecutionItem] = {
     val sb = new SessionBuilder(raw, sessionId, computationId, cache)
     sb.getItems(raw, Map.empty, Seq.empty)
+  }
+}
+
+object Registry {
+  import JsonSparkConversions._
+
+  def extractPointerPath(sid: SessionId, js: JsValue): Try[GlobalPath] = js match {
+    case JsObject(m) =>
+      for {
+        p <- getStringList(m, "path")
+        comp <- getString(m, "computation")
+      } yield {
+        GlobalPath(sid, ComputationId(comp), Path(p))
+      }
+    case _ => Failure(new Exception(s"Expected object, got $js"))
   }
 }
 

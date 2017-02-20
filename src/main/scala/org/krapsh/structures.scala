@@ -1,8 +1,6 @@
 package org.krapsh
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import org.apache.spark.sql.Row
-import org.krapsh.row.AlgebraicRow
 import org.krapsh.structures.CellWithType
 
 /**

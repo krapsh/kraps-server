@@ -206,6 +206,20 @@ object SparkRegistry extends Logging {
     adf
   }
 
+  // A special op builder that simply wraps a result already computed.
+  def pointerOpBuilder(typedCell: CellWithType): OpBuilder = new OpBuilder {
+    override def op = "org.spark.PlaceholderCache"
+    override def build(
+        p: Seq[ExecutionOutput],
+        ex: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      val df = session.createDataFrame(Seq(typedCell.row), typedCell.rowType)
+      DataFrameWithType(df, typedCell.cellType)
+    }
+
+
+  }
+
   val inferSchema = new OpBuilder {
     override def op = "org.spark.InferSchema"
     override def build(
