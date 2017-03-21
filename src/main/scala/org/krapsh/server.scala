@@ -12,7 +12,7 @@ import spray.http.MediaTypes._
 import spray.httpx.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
 import spray.routing._
-import org.krapsh.structures.{ComputationResultJson, UntypedNodeJson}
+import org.krapsh.structures.{BatchComputationResultJson, ComputationResultJson, UntypedNodeJson}
 
 
 object Boot extends App {
@@ -130,13 +130,26 @@ trait MyService extends HttpService with Logging {
         (sessionIdTxt, computationIdTxt, rest) =>
       val sessionId = SessionId(sessionIdTxt)
       val computationId = ComputationId(computationIdTxt)
-      val p = Path(rest.split("/"))
-      val gp = GlobalPath(sessionId, computationId, p)
+      if (rest.isEmpty) {
+        // We are being asked for the computation
+        get {
+          complete {
+            val s = manager.statusComputation(sessionId, computationId).getOrElse(
+              throw new Exception(s"$sessionId $computationId"))
+            import ComputationResultJson._
+            BatchComputationResultJson.fromResult(s)
+          }
+        }
+      } else {
+        // Asking for a given element.
+        val p = Path(rest.split("/"))
+        val gp = GlobalPath(sessionId, computationId, p)
 
-      get {
-        complete {
-          val s = manager.status(gp).getOrElse(throw new Exception(gp.toString))
-          ComputationResultJson.fromResult(s)
+        get {
+          complete {
+            val s = manager.status(gp).getOrElse(throw new Exception(gp.toString))
+            ComputationResultJson.fromResult(s)
+          }
         }
       }
     }

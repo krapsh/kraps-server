@@ -3,7 +3,7 @@ package org.krapsh.structures
 import org.apache.spark.sql.Row
 import org.krapsh._
 import spray.json.DefaultJsonProtocol._
-import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsString, JsValue}
+import spray.json.{DefaultJsonProtocol, JsArray, JsBoolean, JsNull, JsNumber, JsString, JsValue}
 
 case class UntypedNodeJson(
     locality: String,
@@ -29,24 +29,44 @@ case class UntypedNodeJson(
   }
 }
 
+case class ComputationResultWithIdJson(
+    localPath: Seq[String],
+    result: ComputationResultJson) extends Serializable
+
+case class BatchComputationResultJson(
+    targetLocalPath: Seq[String], // The target node
+    results: List[ComputationResultWithIdJson])
+
+object BatchComputationResultJson {
+   def fromResult(status: BatchComputationResult): BatchComputationResultJson = {
+     val res = status.results.map { case (k, s) =>
+       ComputationResultWithIdJson(k.local.repr, ComputationResultJson.fromResult(s))}
+     BatchComputationResultJson(status.target.local.repr, res.toList)
+   }
+
+}
+
 case class ComputationResultJson(
     status: String, // scheduled, running, finished_success, finished_failure
     finalError: Option[String], // TODO: better formatting
-    finalResult: Option[CellWithType]) extends Serializable
+    finalResult: Option[CellWithType],
+    stats: Option[SparkComputationStats]) extends Serializable
 
 object ComputationResultJson {
 
-  implicit val computationResultJsonFormatter = jsonFormat3(ComputationResultJson.apply)
+  implicit val computationResultJsonFormatter = jsonFormat4(ComputationResultJson.apply)
+  implicit val formatter1 = jsonFormat2(ComputationResultWithIdJson.apply)
+  implicit val formatter2 = jsonFormat2(BatchComputationResultJson.apply)
 
-  val empty = ComputationResultJson(null, None, None)
+  val empty = ComputationResultJson(null, None, None, None)
 
   def fromResult(status: ComputationResult): ComputationResultJson = status match {
     case ComputationScheduled =>
       empty.copy(status="scheduled")
-    case ComputationRunning =>
-      empty.copy(status="running")
-    case ComputationDone(cwt) =>
-      empty.copy(status="finished_success", finalResult = Some(cwt))
+    case ComputationRunning(stats) =>
+      empty.copy(status="running", stats=stats)
+    case ComputationDone(cwt, stats) =>
+      empty.copy(status="finished_success", finalResult = cwt, stats=stats)
     case ComputationFailed(e) =>
       empty.copy(status="finished_failure", finalError = Some(e.getLocalizedMessage))
   }

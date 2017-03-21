@@ -139,7 +139,7 @@ object SparkRegistry extends Logging {
     DataFrameWithType(df3, schema)
   }
 
-  val localConstant = createTypedBuilder0("org.spark.LocalConstant") { z =>
+  val locLiteral = createTypedBuilder0("org.spark.LocalLiteral") { z =>
     val typedCell = LocalSparkConversion.deserializeLocal(z) match {
       case Success(ct) => ct
       case Failure(e) =>
@@ -150,7 +150,7 @@ object SparkRegistry extends Logging {
     DataFrameWithType(df, typedCell.cellType)
   }
 
-  val constant = createTypedBuilder0("org.spark.Constant") { z =>
+  val dLiteral = createTypedBuilder0("org.spark.DistributedLiteral") { z =>
     val cellCol = DistributedSparkConversion.deserializeDistributed(z) match {
       case Success(cc) => cc
       case Failure(e) =>
@@ -326,14 +326,14 @@ object SparkRegistry extends Logging {
     autocache,
     cache,
     collect,
-    constant,
+    dLiteral,
     dataSource,
     groupedReduction,
     identity,
     inferSchema,
     join,
     localAbs,
-    localConstant,
+    locLiteral,
     localDiv,
     localIdentity,
     localMax,

@@ -56,6 +56,17 @@ class Manager extends Logging {
     sessions.get(p.session).flatMap(_.status(p))
   }
 
+  /**
+   * The status of a whole group of computation.
+   */
+  def statusComputation(
+      session: SessionId,
+      computation: ComputationId): Option[BatchComputationResult] = {
+    sessions.get(session).flatMap { ks =>
+      ks.statusComputation(computation)
+    }
+  }
+
   def resourceStatus(session: SessionId, paths: Seq[HdfsPath]): Seq[HdfsResourceResult] = {
     sessions.get(session)
       .map(session => SourceStamps.getStamps(sparkSession, paths))

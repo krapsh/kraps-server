@@ -2,6 +2,7 @@ package org.krapsh
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.krapsh.structures.CellWithType
+import spray.json.DefaultJsonProtocol._
 
 /**
  * The identifier of a spark session.
@@ -67,6 +68,16 @@ class Computation private (
   lazy val trackedItemDependencies: Map[GlobalPath, Seq[GlobalPath]] = {
     // We do not track nodes that have side effects for now.
     val trackedPaths = trackedItems.map(_.path)
+    // Include all the dependencies (parents and logical)
+    val deps = items.map { item =>
+      item.path -> (item.logicalDependencies ++ item.dependencies).map(_.path)
+    }.toMap
+    trackedItemDeps(trackedPaths, items.map(_.path), deps)
+  }
+
+  lazy val itemDependencies: Map[GlobalPath, Seq[GlobalPath]] = {
+    // We do not track nodes that have side effects for now.
+    val trackedPaths = items.map(_.path)
     // Include all the dependencies (parents and logical)
     val deps = items.map { item =>
       item.path -> (item.logicalDependencies ++ item.dependencies).map(_.path)
@@ -158,9 +169,20 @@ class ResultCache(
     }
   }
 
+  def computationStatus(
+      session: SessionId,
+      computation: ComputationId): BatchComputationResult = {
+    val x = map.keys.filter(gp => gp.computation == computation && gp.session == session)
+    val l = x.flatMap { k =>
+      val res = status(k)
+      res.map(y => k -> y)
+    }   .toList
+    BatchComputationResult(null, l)
+  }
+
   def finalResult(path: GlobalPath): Option[CellWithType] = {
     map.get(path) match {
-      case Some(ComputationDone(cell)) => Some(cell)
+      case Some(ComputationDone(cell, _)) => cell
       case _ => None
     }
   }
@@ -191,16 +213,41 @@ class ResultCache(
   }
 }
 
+case class SparkComputationStats(
+    rddInfo: Seq[RDDInfo])
+
+object SparkComputationStats {
+  implicit val formatter = jsonFormat1(SparkComputationStats.apply)
+}
+
 sealed trait Locality
 case object Distributed extends Locality
 case object Local extends Locality
 
 /**
+ * The results for a complete computation.
+ */
+case class BatchComputationResult(
+    target: GlobalPath,
+    results: Seq[(GlobalPath, ComputationResult)])
+
+/**
  * The state of a computation on an observable.
  */
 sealed trait ComputationResult
+
+// The computation has been inserted into the scheduler.
 case object ComputationScheduled extends ComputationResult
-case object ComputationRunning extends ComputationResult
+
+// A task has been created for the execution item.
+case class ComputationRunning(stats: Option[SparkComputationStats]) extends ComputationResult
+
+// This item has finished to execute.
+// It could either be that was only doing some analysis (dataframes),
+// or that it produced a result (observables).
 // Using algebraic rows to maximize the correctness of the resulting computations.
-case class ComputationDone(result: CellWithType) extends ComputationResult
+case class ComputationDone(
+    result: Option[CellWithType],
+    stats: Option[SparkComputationStats]) extends ComputationResult
+
 case class ComputationFailed(msg: Throwable) extends ComputationResult

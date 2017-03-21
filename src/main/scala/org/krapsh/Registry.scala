@@ -183,7 +183,10 @@ class Registry extends Logging {
         val c = cache()
         val pointerPath = Registry.extractPointerPath(sessionId, raw.extra).get
         val res = c.status(pointerPath) match {
-          case Some(d: ComputationDone) => d.result
+          case Some(d: ComputationDone) =>
+            d.result.getOrElse {
+              KrapshException.fail(s"Expected a finished computation for $pointerPath: $d")
+            }
           case x => KrapshException.fail(
             s"Expected a finished computation for $pointerPath, got $x")
         }
