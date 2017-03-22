@@ -175,7 +175,7 @@ class ResultCache(
     val x = map.keys.filter(gp => gp.computation == computation && gp.session == session)
     val l = x.flatMap { k =>
       val res = status(k)
-      res.map(y => k -> y)
+      res.map(y => (k, Nil, y))
     }   .toList
     BatchComputationResult(null, l)
   }
@@ -229,7 +229,7 @@ case object Local extends Locality
  */
 case class BatchComputationResult(
     target: GlobalPath,
-    results: Seq[(GlobalPath, ComputationResult)])
+    results: Seq[(GlobalPath, Seq[GlobalPath], ComputationResult)])
 
 /**
  * The state of a computation on an observable.

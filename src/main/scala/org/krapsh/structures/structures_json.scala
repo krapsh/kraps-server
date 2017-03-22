@@ -31,6 +31,7 @@ case class UntypedNodeJson(
 
 case class ComputationResultWithIdJson(
     localPath: Seq[String],
+    pathDependencies: Seq[Seq[String]],
     result: ComputationResultJson) extends Serializable
 
 case class BatchComputationResultJson(
@@ -39,8 +40,11 @@ case class BatchComputationResultJson(
 
 object BatchComputationResultJson {
    def fromResult(status: BatchComputationResult): BatchComputationResultJson = {
-     val res = status.results.map { case (k, s) =>
-       ComputationResultWithIdJson(k.local.repr, ComputationResultJson.fromResult(s))}
+     val res = status.results.map { case (k, deps, s) =>
+       ComputationResultWithIdJson(
+         k.local.repr,
+         deps.map(_.local.repr),
+         ComputationResultJson.fromResult(s))}
      BatchComputationResultJson(status.target.local.repr, res.toList)
    }
 
@@ -55,7 +59,7 @@ case class ComputationResultJson(
 object ComputationResultJson {
 
   implicit val computationResultJsonFormatter = jsonFormat4(ComputationResultJson.apply)
-  implicit val formatter1 = jsonFormat2(ComputationResultWithIdJson.apply)
+  implicit val formatter1 = jsonFormat3(ComputationResultWithIdJson.apply)
   implicit val formatter2 = jsonFormat2(BatchComputationResultJson.apply)
 
   val empty = ComputationResultJson(null, None, None, None)

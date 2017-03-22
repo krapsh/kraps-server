@@ -44,7 +44,11 @@ class KSession(val id: SessionId) extends Logging {
   def statusComputation(compId: ComputationId): Option[BatchComputationResult] = {
     state.queue.get(compId).map { comp =>
       val p = comp.output.path
-      state.results.computationStatus(id, compId).copy(target = p)
+      val x = state.results.computationStatus(id, compId).copy(target = p)
+      val withDeps = x.results.map { case (p2, _, res) =>
+        (p2, comp.itemDependencies.getOrElse(p2, Nil), res)
+      }
+      x.copy(results = withDeps)
     }
   }
 
