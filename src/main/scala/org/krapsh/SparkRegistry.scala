@@ -206,6 +206,26 @@ object SparkRegistry extends Logging {
     adf
   }
 
+  /**
+   * Takes all the parents and assembles them into a local structure.
+   */
+  val localPackBuilder = new OpBuilder {
+    override def op: String = "org.spark.LocalPack"
+
+    override def build(
+        parents: Seq[ExecutionOutput],
+        extra: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      require(parents.nonEmpty)
+      val cellswt = parents.map {
+        case LocalExecOutput(row) => row
+        case x => KrapshException.fail(s"org.Spark.LocalPack: Expected a local element, got $x")
+      }
+      val c = CellWithType.makeTuple(cellswt.head, cellswt.tail)
+      DataFrameWithType.fromCells(Seq(c), session).get
+    }
+  }
+
   // A special op builder that simply wraps a result already computed.
   def pointerOpBuilder(typedCell: CellWithType): OpBuilder = new OpBuilder {
     override def op = "org.spark.PlaceholderCache"
@@ -216,7 +236,6 @@ object SparkRegistry extends Logging {
       val df = session.createDataFrame(Seq(typedCell.row), typedCell.rowType)
       DataFrameWithType(df, typedCell.cellType)
     }
-
 
   }
 
@@ -341,6 +360,7 @@ object SparkRegistry extends Logging {
     localMinus,
     localMult,
     localNegate,
+    localPackBuilder,
     localPlus,
     persist,
     select,

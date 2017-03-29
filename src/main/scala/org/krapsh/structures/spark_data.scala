@@ -16,7 +16,8 @@ import org.apache.spark.sql.types._
 import org.krapsh.row.{AlgebraicRow, Cell, RowArray, RowCell}
 import spray.json.DefaultJsonProtocol._
 import spray.json._
-import DefaultJsonProtocol._ // if you don't supply your own Protocol (see below)
+import DefaultJsonProtocol._
+import org.krapsh.KrapshException
 
 import scala.util.{Failure, Success, Try}
 
@@ -62,6 +63,20 @@ object AugmentedDataType {
     val nl = if (f.nullable) IsNullable else IsStrict
     AugmentedDataType(f.dataType, nl)
   }
+
+  // Does not allow repeated fields
+  def fromStruct(s: Seq[(String, AugmentedDataType)]): Try[AugmentedDataType] = {
+    // I could never figure out if Spark allows repeated field names -> disallow.
+    if (s.map(_._1).distinct.size != s.size) {
+      Failure(new KrapshException(s"Duplicate fields in ${s.map(_._1)}"))
+    } else {
+      val fields = s.map { case (name, adt) =>
+        StructField(name, adt.dataType, nullable = adt.nullability == IsNullable)
+      }
+      val str = StructType(fields)
+      Success(AugmentedDataType(str, IsStrict))
+    }
+  }
 }
 
 /**
@@ -76,6 +91,7 @@ case class CellCollection(
     normalizedCellDataType: StructType,
     normalizedData: Seq[AlgebraicRow])
 
+// TODO: make recursive, so that there is never any issues with the type!
 /**
  * A single cell. This is how an observable is represented.
  * @param cellData the data in the cell. It can contain nulls.
@@ -86,12 +102,23 @@ case class CellWithType(cellData: Cell, cellType: AugmentedDataType) {
     LocalSparkConversion.normalizeDataTypeIfNeeded(cellType)
 
   lazy val row: GenericRowWithSchema = {
-    new GenericRowWithSchema(Array(Cell.toAny(cellData)), rowType)
+    val r = Cell.toStruct(cellData).getOrElse {
+      Row(Cell.toAny(cellData))
+    }
+    new GenericRowWithSchema(r.toSeq.toArray, rowType)
   }
 }
 
 object CellWithType {
   import JsonSparkConversions.get
+
+  def makeTuple(field1: CellWithType, fields: Seq[CellWithType]): CellWithType = {
+    val cellswt = field1 +: fields
+    val t =  cellswt.map(_.cellType)
+    val names = (1 to t.size).map(i => s"_$i")
+    val adt = AugmentedDataType.fromStruct(names.zip(t)).get
+    CellWithType(RowCell(AlgebraicRow(cellswt.map(_.cellData))), adt)
+  }
 
   /**
    * Takes some data that may have been normalized, and attempts to expose it as unnormalized

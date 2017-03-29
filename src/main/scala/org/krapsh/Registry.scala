@@ -9,8 +9,7 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql._
 import org.krapsh.ops.Extraction
 import org.krapsh.row.Cell
-import org.krapsh.structures.{AugmentedDataType, CellWithType, IsStrict, UntypedNodeJson}
-import org.krapsh.structures.JsonSparkConversions
+import org.krapsh.structures._
 
 import scala.util.parsing.json.JSONObject
 import scala.util.{Failure, Success, Try}
@@ -81,6 +80,22 @@ object DataFrameWithType extends Logging {
     logger.debug(s"asColumn: cols=$cols")
     struct(cols: _*)
 
+  }
+
+  /**
+   * A parallelize version that uses type information.
+   */
+  def fromCells(cells: Seq[CellWithType], session: SparkSession): Try[DataFrameWithType] = {
+    // Check that the type is the same for all the cells:
+    cells.map(_.cellType).distinct match {
+      case Seq(adt) =>
+        val rowType = LocalSparkConversion.normalizeDataTypeIfNeeded(adt)
+        val rows: Seq[Row] = cells.map(_.row)
+        val df = session.createDataFrame(rows.asJava, rowType)
+        Success(DataFrameWithType(df, adt))
+      case x =>
+        Failure(new KrapshException(s"Found multiple types: $x"))
+    }
   }
 }
 

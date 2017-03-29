@@ -142,6 +142,11 @@ object Cell {
     case BoolElement(b) => b
   }
 
+  def toStruct(c: Cell): Option[Row] = c match {
+    case RowCell(r) => Some(AlgebraicRow.toRow(r))
+    case _ => None
+  }
+
   def from(x: Any, dt: DataType): Try[Cell] = (x, dt) match {
     // Nulls, etc.
     case (null, _) => Success(Empty)
