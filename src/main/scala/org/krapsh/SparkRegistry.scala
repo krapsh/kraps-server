@@ -319,7 +319,7 @@ object SparkRegistry extends Logging {
     c * c2 + (- c + 1) * c1
   }
 
-  val select = createTypedBuilderD("org.spark.Select") { (adf, js) =>
+  val select = createTypedBuilderD("org.spark.SelectDistributed") { (adf, js) =>
     logger.debug(s"select: adf=$adf js=$js")
     val (cols, adt) = ColumnTransforms.select(adf, js) match {
       case Success(z) => z
@@ -331,6 +331,35 @@ object SparkRegistry extends Logging {
     logger.debug(s"select: df=$df, adt=$adt")
     df.printSchema()
     DataFrameWithType.create(df, adt).get
+  }
+
+  val select2 = new OpBuilder {
+
+    override def op: String = "org.spark.Select"
+
+    override def build(
+        parents: Seq[ExecutionOutput],
+        extra: JsValue, session: SparkSession): DataFrameWithType = {
+      logger.debug(s"select: parents=$parents js=$extra")
+      // Get the dataframe input:
+      val adf = parents match {
+        case Seq(DisExecutionOutput(dfwt)) => dfwt
+        case Seq(LocalExecOutput(cwt)) =>
+          DataFrameWithType.fromCells(Seq(cwt), session).get
+      }
+      val (cols, adt) = ColumnTransforms.select(adf, extra) match {
+        case Success(z) => z
+        case Failure(e) => throw new Exception(s"Failure when calling select", e)
+      }
+      logger.debug(s"select: cols = $cols")
+      cols.foreach(_.explain(true))
+      val df = adf.df.select(cols: _*)
+      logger.debug(s"select: df=$df, adt=$adt")
+      df.printSchema()
+      DataFrameWithType.create(df, adt).get
+    }
+
+
   }
 
   val groupedReduction = createTypedBuilderD("org.spark.GroupedReduction")(
@@ -384,7 +413,7 @@ object SparkRegistry extends Logging {
     localPackBuilder,
     localPlus,
     persist,
-    select,
+    select2,
     structuredReduction,
     uncache,
     unpersist)
