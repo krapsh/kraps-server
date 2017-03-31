@@ -28,7 +28,7 @@ object GroupedReduction extends Logging {
       col <- performTrans(valCol, op)
     } yield {
       val df = g.agg(col.col.alias("value"))
-      DataFrameWithType(df, AugmentedDataType.apply(df.schema, IsStrict))
+      DataFrameWithType.create(df, AugmentedDataType.apply(df.schema, IsStrict)).get
     }
   }
 
@@ -41,9 +41,10 @@ object GroupedReduction extends Logging {
     for {
       op <- parseTrans(js)
       col <- performTrans(c, op)
+      df = adf.df.groupBy().agg(col.col)
+      dfwt <- DataFrameWithType.create(df, col.rectifiedSchema)
     } yield {
-      val df = adf.df.groupBy().agg(col.col)
-      DataFrameWithType(df, col.rectifiedSchema)
+      dfwt
     }
   }
 

@@ -136,7 +136,7 @@ object SparkRegistry extends Logging {
     logger.info(s"collect: input df: $adf ${adf.df.schema}")
     logger.info(s"collect: output df3: $df3 ${df3.schema}")
     logger.info(s"collect: output schema: $schema")
-    DataFrameWithType(df3, schema)
+    DataFrameWithType.create(df3, schema).get
   }
 
   val locLiteral = createTypedBuilder0("org.spark.LocalLiteral") { z =>
@@ -147,7 +147,7 @@ object SparkRegistry extends Logging {
     }
     val session = SparkSession.builder().getOrCreate()
     val df = session.createDataFrame(Seq(typedCell.row), typedCell.rowType)
-    DataFrameWithType(df, typedCell.cellType)
+    DataFrameWithType.create(df, typedCell.cellType).get
   }
 
   val dLiteral = createTypedBuilder0("org.spark.DistributedLiteral") { z =>
@@ -161,7 +161,7 @@ object SparkRegistry extends Logging {
     val rows = cellCol.normalizedData.map(AlgebraicRow.toRow)
     val df = session.createDataFrame(rows, cellCol.normalizedCellDataType)
     logger.debug(s"constant: created dataframe: df=$df cellDT=${cellCol.cellDataType}")
-    DataFrameWithType(df, cellCol.cellDataType)
+    DataFrameWithType.create(df, cellCol.cellDataType).get
   }
 
   val persist = createBuilderD("org.spark.Persist") { (adf, _) =>
@@ -206,6 +206,26 @@ object SparkRegistry extends Logging {
     adf
   }
 
+  val broadcastPairBuilder = new OpBuilder {
+
+    override def op: String = "org.spark.BroadcastPair"
+
+    override def build(
+        parents: Seq[ExecutionOutput],
+        extra: JsValue,
+        session: SparkSession): DataFrameWithType = {
+      val (dfwt, cellwt) = parents match {
+        case Seq(DisExecutionOutput(x), LocalExecOutput(y)) => x -> y
+        case _ => KrapshException.fail(s"Expected (dataframe, observable), got $parents")
+      }
+      val adt = AugmentedDataType.tuple(dfwt.rectifiedSchema, Seq(cellwt.cellType))
+      val c1 = DataFrameWithType.asColumn(dfwt).as("_1")
+      val c2 = lit(Cell.toAny(cellwt.cellData)).as("_2")
+      val df = dfwt.df.select(c1, c2)
+      DataFrameWithType.create(df, adt).get
+    }
+  }
+
   /**
    * Takes all the parents and assembles them into a local structure.
    */
@@ -234,7 +254,7 @@ object SparkRegistry extends Logging {
         ex: JsValue,
         session: SparkSession): DataFrameWithType = {
       val df = session.createDataFrame(Seq(typedCell.row), typedCell.rowType)
-      DataFrameWithType(df, typedCell.cellType)
+      DataFrameWithType.create(df, typedCell.cellType).get
     }
 
   }
@@ -253,7 +273,7 @@ object SparkRegistry extends Logging {
       val r = TypeConversions.toRow(schema)
       val r2 = AlgebraicRow.toRow(r)
       val df2 = session.sqlContext.createDataFrame(Seq(r2), TypeConversions.typeStructure)
-      DataFrameWithType(df2, AugmentedDataType(TypeConversions.typeStructure, IsStrict))
+      DataFrameWithType.create(df2, AugmentedDataType(TypeConversions.typeStructure, IsStrict)).get
     }
   }
 
@@ -266,7 +286,7 @@ object SparkRegistry extends Logging {
       require(p.isEmpty, (ex, p))
       val reader = session.read
       val df = Readers.buildDF(reader, ex).get
-      DataFrameWithType(df, AugmentedDataType(df.schema, IsStrict))
+      DataFrameWithType.create(df, AugmentedDataType(df.schema, IsStrict)).get
     }
   }
 
@@ -310,7 +330,7 @@ object SparkRegistry extends Logging {
     val df = adf.df.select(cols: _*)
     logger.debug(s"select: df=$df, adt=$adt")
     df.printSchema()
-    DataFrameWithType(df, adt)
+    DataFrameWithType.create(df, adt).get
   }
 
   val groupedReduction = createTypedBuilderD("org.spark.GroupedReduction")(
@@ -343,6 +363,7 @@ object SparkRegistry extends Logging {
 
   val all = Seq(
     autocache,
+    broadcastPairBuilder,
     cache,
     collect,
     dLiteral,

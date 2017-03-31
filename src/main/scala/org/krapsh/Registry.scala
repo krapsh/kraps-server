@@ -29,10 +29,21 @@ import scala.util.{Failure, Success, Try}
  * @param df the dataframe as manipulated by Spark
  * @param rectifiedSchema the type of the dataframe, as seen by Krapsh
  */
-case class DataFrameWithType(df: DataFrame, rectifiedSchema: AugmentedDataType)
+case class DataFrameWithType private (df: DataFrame, rectifiedSchema: AugmentedDataType)
 
 object DataFrameWithType extends Logging {
-  def create(df: DataFrame): DataFrameWithType = {
+
+  def create(df: DataFrame, adt: AugmentedDataType): Try[DataFrameWithType] = {
+    AugmentedDataType.isCompatible(adt, df.schema) match {
+      case Some(err) => Failure(new KrapshException(err))
+      case None => Success(new DataFrameWithType(df, adt))
+    }
+  }
+
+  /**
+   * Uses the structure of the dataframe as the strict, top-level structure.
+   */
+  def createFromStruct(df: DataFrame): DataFrameWithType = {
     DataFrameWithType(df, AugmentedDataType(df.schema, IsStrict))
   }
 
@@ -331,7 +342,7 @@ object GlobalRegistry extends Logging {
       items match {
         case Seq(DisExecutionOutput(adf1), DisExecutionOutput(adf2)) =>
           // Result is distributed, no need to force denormalization?
-          DataFrameWithType.create(fun(adf1.df, adf2.df, jsValue))
+          DataFrameWithType.createFromStruct(fun(adf1.df, adf2.df, jsValue))
         case _ => throw new Exception(s"Unexpected input for op $opName: $items")
       }
     }

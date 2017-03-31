@@ -63,7 +63,7 @@ class KSession(val id: SessionId) extends Logging {
         }
         state = state.updateResult(path, ComputationDone(Some(cwt), stats))
       case Failure(e: KrapshException) =>
-        logger.debug(s"Item $path finished with an identified internal failure: $e")
+        logger.warn(s"Item $path finished with an identified internal failure: $e", e)
         state = state.updateResult(path, ComputationFailed(e))
       case Failure(e) =>
         logger.error(s"Item $path finished with a failure: $e", e)
@@ -196,6 +196,8 @@ object KSession extends Logging {
           // We could get the struct type from the dataframe, but as an extra precaution, it is
           // recomputed from the rectified schema.
           val cwt = CellWithType.denormalizeFromRow(head, item.rectifiedDataFrameSchema)
+          logger.debug(s"run: head=$head")
+          logger.debug(s"run: cwt=$cwt")
           session.notifyFinished(item.path, cwt)
         } else {
           // It is just a dataframe that we analyzed

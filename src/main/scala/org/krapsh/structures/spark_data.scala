@@ -36,6 +36,8 @@ case object IsNullable extends Nullable
 case class AugmentedDataType(dataType: DataType, nullability: Nullable) {
   def isPrimitive: Boolean = dataType match {
     case _: StructType => false
+    case _: ArrayType => false
+    case _: MapType => false
     case _ => true
   }
 
@@ -59,6 +61,9 @@ object AugmentedDataType {
     AugmentedDataType(ArrayType(adt.dataType, adt.isNullable), IsStrict)
   }
 
+  /**
+   * Carries the nullability information of a field, but not the name.
+   */
   def fromField(f: StructField): AugmentedDataType = {
     val nl = if (f.nullable) IsNullable else IsStrict
     AugmentedDataType(f.dataType, nl)
@@ -76,6 +81,71 @@ object AugmentedDataType {
       val str = StructType(fields)
       Success(AugmentedDataType(str, IsStrict))
     }
+  }
+
+  def tuple(first: AugmentedDataType, others: Seq[AugmentedDataType]): AugmentedDataType = {
+    val s = first +: others
+    val names = (1 to s.size).map { idx => s"_$idx" }
+    fromStruct(names.zip(s)).get
+  }
+
+  /**
+   * Checks that the given data type is either the normalized version or equal
+   * to the given ADT.
+   *
+   * Returns an error message if this is not the case.
+   */
+  def isCompatible(adt: AugmentedDataType, dt: DataType): Option[String] = (adt, dt) match {
+    // The algorithm is not trivial because the nullability information may be changed at
+    // any nesting level.
+    // Top-level structures.
+    case (AugmentedDataType(st1: StructType, IsStrict), st2: StructType) =>
+      // This is a top-level structure, it should have the same type, modulo some
+      // additional nullability information.
+      if (transfersTo(st1, st2)) {
+        None
+      } else {
+        Some(s"Expected top-level structure $st1, but got top-level structure $st2")
+      }
+    case (_, st @ StructType(Array(f))) =>
+      // This is a wrapped element (either top-level non-struct or optional struct).
+      // Drop the field name during the check, it is a mess for the time being.
+      val adt2 = AugmentedDataType.fromField(f)
+      if (transfersTo(adt.dataType, adt2.dataType)) {
+        // Nullability requirements: adt2.isNullable => adt.isNullable (we may have additional
+        // strictness information)
+        if (!adt.isNullable || adt2.isNullable) {
+          None
+        } else {
+          Option(s"The two normalized types have incompatible nullability:" +
+            s" expected $adt, got $adt2")
+        }
+      } else {
+        Option(s"The two normalized types are different: expected $adt, got $adt2")
+      }
+    case _ => Option(s"$adt is not compatible with $dt")
+  }
+
+  // The type dt1 is a subset of the type dt2
+  private def transfersTo(dt1: DataType, dt2: DataType): Boolean = (dt1, dt2) match {
+    case (x, y) if x == y => true
+    case (ArrayType(t1, nl1), ArrayType(t2, nl2)) => transfersTo(t1, t2) && transfersTo(nl1, nl2)
+    case (st1: StructType, st2: StructType) =>
+      if (st1.fields.length != st2.fields.length) {
+        false
+      } else {
+        st1.fields.zip(st2.fields).forall { case (f1, f2) => transfersTo(f1, f2) }
+      }
+  }
+
+  private def transfersTo(f1: StructField, f2: StructField): Boolean = {
+    f1.name == f2.name &&
+      transfersTo(f1.nullable, f2.nullable) &&
+      transfersTo(f1.dataType, f2.dataType)
+  }
+
+  private def transfersTo(null1: Boolean, null2: Boolean): Boolean = {
+    ! null1 || null2
   }
 }
 
@@ -114,9 +184,7 @@ object CellWithType {
 
   def makeTuple(field1: CellWithType, fields: Seq[CellWithType]): CellWithType = {
     val cellswt = field1 +: fields
-    val t =  cellswt.map(_.cellType)
-    val names = (1 to t.size).map(i => s"_$i")
-    val adt = AugmentedDataType.fromStruct(names.zip(t)).get
+    val adt = AugmentedDataType.tuple(field1.cellType, fields.map(_.cellType))
     CellWithType(RowCell(AlgebraicRow(cellswt.map(_.cellData))), adt)
   }
 
@@ -125,17 +193,24 @@ object CellWithType {
    * data again.
    */
   def denormalizeFromRow(row: Row, dt: AugmentedDataType): Try[CellWithType] = {
-    // This should be the structure being used.
-    val st = LocalSparkConversion.normalizeDataTypeIfNeeded(dt)
-    val ct = AlgebraicRow.fromRow(row, st).flatMap { ar =>
-      if (dt.isPrimitive) {
-        AlgebraicRow.denormalize(ar)
-      } else {
-        Success(RowCell(ar))
-      }
+    val ct = dt.topLevelStruct match {
+      case Some(st) =>
+        // This is a top-level row, no need to denormalize
+        AlgebraicRow.fromRow(row, st).map(RowCell.apply)
+      case None =>
+        // Convert the row first using the normalized schema, then attempt to access the content.
+        val st = LocalSparkConversion.normalizeDataTypeIfNeeded(dt)
+        for {
+          ar <- AlgebraicRow.fromRow(row, st)
+          dn <- AlgebraicRow.denormalize(ar)
+        } yield {
+          dn
+        }
     }
     for (cell <- ct) yield { CellWithType(cell, dt) }
   }
+
+
 
   implicit object CellJsonFormat extends RootJsonFormat[CellWithType] {
     override def write(c: CellWithType) = JsObject(Map(
