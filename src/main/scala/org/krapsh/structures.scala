@@ -65,16 +65,6 @@ class Computation private (
     }
   }
 
-//  lazy val trackedItemDependencies: Map[GlobalPath, Seq[GlobalPath]] = {
-//    // We do not track nodes that have side effects for now.
-//    val trackedPaths = trackedItems.map(_.path)
-//    // Include all the dependencies (parents and logical)
-//    val deps = items.map { item =>
-//      item.path -> (item.logicalDependencies ++ item.dependencies).map(_.path)
-//    }.toMap
-//    trackedItemDeps(trackedPaths, items.map(_.path), deps)
-//  }
-
   lazy val itemDependencies: Map[GlobalPath, Seq[GlobalPath]] = {
     // We do not track nodes that have side effects for now.
     val trackedPaths = items.map(_.path)
