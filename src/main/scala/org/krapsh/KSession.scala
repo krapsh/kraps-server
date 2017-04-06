@@ -41,19 +41,50 @@ class KSession(val id: SessionId) extends Logging {
 
   def status(p: GlobalPath): Option[ComputationResult] = state.results.status(p)
 
+  def statusComputation(compId: ComputationId): Option[BatchComputationResult] = {
+    state.queue.get(compId).map { comp =>
+      val p = comp.output.path
+      val x = state.results.computationStatus(id, compId).copy(target = p)
+      val withDeps = x.results.map { case (p2, _, res) =>
+        (p2, comp.itemDependencies.getOrElse(p2, Nil), res)
+      }
+      x.copy(results = withDeps)
+    }
+  }
+
   private def notifyFinished(path: GlobalPath, result: Try[CellWithType]): Unit = synchronized {
     result match {
       case Success(cwt) =>
         logger.debug(s"Item $path finished with a success")
-        state = state.updateResult(path, ComputationDone(cwt))
+        // Extract the current stats to add them to the result.
+        val stats = state.results.status(path) match {
+          case Some(ComputationRunning(st)) => st
+          case _ => None
+        }
+        state = state.updateResult(path, ComputationDone(Some(cwt), stats))
       case Failure(e: KrapshException) =>
-        logger.debug(s"Item $path finished with an identified internal failure: $e")
+        logger.warn(s"Item $path finished with an identified internal failure: $e", e)
         state = state.updateResult(path, ComputationFailed(e))
       case Failure(e) =>
         logger.error(s"Item $path finished with a failure: $e", e)
         state = state.updateResult(path, ComputationFailed(e))
     }
     update()
+  }
+
+  /**
+   * In the case of datasets, we do not get results, but we just compute a plan
+   * as a side effect.
+   */
+  private def notifyFinishedAnalyzed(
+      path: GlobalPath,
+      stats: SparkComputationStats): Unit = synchronized {
+    state = state.updateResult(path, ComputationDone(None, Some(stats)))
+    update()
+  }
+
+  private def notifyExecutingInSpark(path: GlobalPath, stats: SparkComputationStats): Unit = synchronized {
+    state = state.updateResult(path, ComputationRunning(Some(stats)))
   }
 
   private def update(): Unit = synchronized {
@@ -64,10 +95,10 @@ class KSession(val id: SessionId) extends Logging {
       return
     }
     logger.debug(s"Considering the following items to run: ${next.map(_.path)}")
-    val nowRunning = next.map(i => (i.path -> ComputationRunning))
+    val nowRunning = next.map(i => i.path -> ComputationRunning(None))
     state = state.updateResults(nowRunning)
     val tasks = next.flatMap { item =>
-      // Check that there was no failure before, otherwise we shortcircuit the
+      // Check that there was no failure before, otherwise we short-circuit the
       // computation and produce a failure.
       // The logical dependencies are also included in the failures.
       val previousFailures = (item.dependencies ++ item.logicalDependencies)
@@ -108,6 +139,7 @@ object KSession extends Logging {
     def add(computationId: ComputationId, computation: Computation): State = {
       // Adding all the tracked nodes to the state as scheduled, so that inbound
       // state requests can already come in while spark finishes to initialize.
+      // This is only tracking the observables.
       val stateUp = computation.trackedItems.map(item => item.path -> ComputationScheduled)
       val up = results.update(stateUp)
 
@@ -132,6 +164,11 @@ object KSession extends Logging {
       logger.debug(s"Created runnable $this")
       try {
         logger.info(s"Trying to access RDD info for $this")
+        // Force the materialization of the dependencies first.
+        for (it <- item.dependencies) {
+          it.dataframe
+          it.logical
+        }
         logger.info("Parent data frames:")
         for (it <- item.dependencies) {
           logger.info(s"Dependency logical: ${it.logical.hashCode()}" +
@@ -144,19 +181,28 @@ object KSession extends Logging {
         logger.info(s"physical: ${item.executedPlan}")
         item.dataframe.explain(true)
         logger.info(s"Spark info for $this: rdd=${item.rddId} dependencies=${item.RDDDependencies}")
-        logger.info(s"Getting internal rows: ${item.collectedInternal}")
-        logger.info(s"$this: output schema is:")
-        item.dataframe.printSchema()
-        logger.info(s"$this: Corrected schema is:\n${item.rectifiedDataFrameSchema}")
-        logger.info(s"Getting rows: ${item.collected}")
-        val rows = item.collected
-        logger.debug(s"Got rows: $rows")
-        val head = rows.head
-        // Convert back to a cell associated to the overall type.
-        // We could get the struct type from the dataframe, but as an extra precaution, it is
-        // recomputed from the rectified schema.
-        val cwt = CellWithType.denormalizeFromRow(head, item.rectifiedDataFrameSchema)
-        session.notifyFinished(item.path, cwt)
+        val stats = SparkComputationStats(item.RDDDependencies)
+        session.notifyExecutingInSpark(item.path, stats)
+        if (item.locality == Local) {
+          logger.info(s"Getting internal rows: ${item.collectedInternal}")
+          logger.info(s"$this: output schema is:")
+          item.dataframe.printSchema()
+          logger.info(s"$this: Corrected schema is:\n${item.rectifiedDataFrameSchema}")
+          logger.info(s"Getting rows: ${item.collected}")
+          val rows = item.collected
+          logger.debug(s"Got rows: $rows")
+          val head = rows.head
+          // Convert back to a cell associated to the overall type.
+          // We could get the struct type from the dataframe, but as an extra precaution, it is
+          // recomputed from the rectified schema.
+          val cwt = CellWithType.denormalizeFromRow(head, item.rectifiedDataFrameSchema)
+          logger.debug(s"run: head=$head")
+          logger.debug(s"run: cwt=$cwt")
+          session.notifyFinished(item.path, cwt)
+        } else {
+          // It is just a dataframe that we analyzed
+          session.notifyFinishedAnalyzed(item.path, stats)
+        }
       } catch {
         case NonFatal(e) =>
           session.notifyFinished(item.path, Failure(e))
@@ -201,8 +247,13 @@ object KSession extends Logging {
 
     // Return all the computations that are free to run, and for which the results have
     // finished to compute.
-    comp.trackedItems.filter(isAvailable).filter { item =>
-      comp.trackedItemDependencies(item.path)
+//    comp.trackedItems.filter(isAvailable).filter { item =>
+//      comp.trackedItemDependencies(item.path)
+//        .map(cache.status)
+//        .forall(isFinished)
+//    }
+    comp.items.filter(isAvailable).filter { item =>
+      comp.itemDependencies(item.path)
         .map(cache.status)
         .forall(isFinished)
     }

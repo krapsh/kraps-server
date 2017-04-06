@@ -10,6 +10,7 @@ import scala.util.{Failure, Success, Try}
 sealed trait Cell
 case object Empty extends Cell // The null elements
 case class IntElement(i: Int) extends Cell
+case class DoubleElement(i: Double) extends Cell
 case class StringElement(s: String) extends Cell
 case class BoolElement(b: Boolean) extends Cell
 // Unlike the haskell code, we need to make a distinction between the
@@ -40,6 +41,7 @@ object Cell {
   def toJson(c: Cell): JsValue = c match {
     case Empty => JsNull
     case IntElement(i) => JsNumber(i)
+    case DoubleElement(i) => JsNumber(i)
     case StringElement(s) => JsString(s)
     case RowArray(s) => JsArray(s.map(toJson):_*)
     // The structure maximizes the compactness, at the expense of requiring a
@@ -57,6 +59,10 @@ object Cell {
       Ordering.Int.compare(i1, i2)
     case (IntElement(_), _) => 1
     case (_, IntElement(_)) => -1
+    case (DoubleElement(i1), DoubleElement(i2)) =>
+      Ordering.Double.compare(i1, i2)
+    case (DoubleElement(_), _) => 1
+    case (_, DoubleElement(_)) => -1
     case (StringElement(s1), StringElement(s2)) =>
       Ordering.String.compare(s1, s2)
     case (StringElement(_), _) => 1
@@ -89,7 +95,7 @@ object Cell {
   private def deserializeCompact0(dt: DataType, data: JsValue): Try[Cell] = {
     (dt, data) match {
       case (_: IntegerType, JsNumber(n)) => Success(IntElement(n.toInt))
-      case (_: DoubleType, JsNumber(n)) => Success(IntElement(n.toInt))
+      case (_: DoubleType, JsNumber(n)) => Success(DoubleElement(n.toDouble))
       case (_: StringType, JsString(s)) => Success(StringElement(s))
       case (at: ArrayType, JsArray(arr)) =>
         if (at.containsNull) {
@@ -136,10 +142,16 @@ object Cell {
   def toAny(c: Cell): Any = c match {
     case Empty => null
     case IntElement(i) => i
+    case DoubleElement(d) => d
     case StringElement(s) => s
     case RowArray(s) => s.map(toAny)
     case RowCell(r) => AlgebraicRow.toRow(r)
     case BoolElement(b) => b
+  }
+
+  def toStruct(c: Cell): Option[Row] = c match {
+    case RowCell(r) => Some(AlgebraicRow.toRow(r))
+    case _ => None
   }
 
   def from(x: Any, dt: DataType): Try[Cell] = (x, dt) match {
@@ -151,6 +163,8 @@ object Cell {
     // Primitives
     case (i: Int, t: IntegerType) => Success(IntElement(i))
     case (i: Integer, t: IntegerType) => Success(IntElement(i))
+    case (i: Double, t: DoubleType) => Success(DoubleElement(i))
+    case (i: java.lang.Double, t: DoubleType) => Success(DoubleElement(i))
     // TODO: proper implementation of the long type
     case (i: Long, t: LongType) => Success(IntElement(i.toInt))
     case (s: String, t: StringType) => Success(StringElement(s))

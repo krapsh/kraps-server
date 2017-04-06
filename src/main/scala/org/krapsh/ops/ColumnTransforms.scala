@@ -73,7 +73,7 @@ object ColumnTransforms extends Logging {
 
   private sealed trait ColOp
   private case class ColExtraction(path: FieldPath) extends ColOp
-  //private case class ColFunction(name: String, inputs: Seq[ColOp]) extends ColOp
+  private case class ColFunction(name: String, inputs: Seq[ColOp]) extends ColOp
 
   private case class Field(fieldName: FieldName, fieldTrans: StructuredTransform)
 
@@ -97,14 +97,35 @@ object ColumnTransforms extends Logging {
         } yield {
           ColExtraction(p)
         }
+      case "fun" =>
+        // It is a function
+        for {
+          fname <- JsonSparkConversions.getString(js.fields, "function")
+          p <- JsonSparkConversions.getFlatten(js.fields, "args")(parseFunArgs)
+        } yield {
+          ColFunction(fname, p)
+        }
       case s: String =>
-        Failure(new Exception(s"Cannot understand $s in $js"))
+        Failure(new Exception(s"Cannot understand op '$s' in $js"))
     }
 
     for {
       op <- getString(js.fields, "colOp")
       z <- opSelect(op)
     } yield z
+  }
+
+  private def parseOp(js: JsValue): Try[ColOp] = js match {
+    case o: JsObject => parseOp(o)
+    case _ =>
+      Failure(new Exception(s"Expected object, got $js"))
+  }
+
+  private def parseFunArgs(js: JsValue): Try[Seq[ColOp]] = js match {
+    case JsArray(arr) =>
+      JsonSparkConversions.sequence(arr.map(parseOp))
+    case _ =>
+      Failure(new Exception(s"expected array, got $js"))
   }
 
   private def parseField(js: JsValue): Try[Field] = js match {
@@ -123,8 +144,8 @@ object ColumnTransforms extends Logging {
 
   // Returns a single column. This column may need to be denormalized after that.
   private def select0(
-                       adf: DataFrameWithType,
-                       trans: StructuredTransform): Try[(Column, AugmentedDataType)] = trans match {
+      adf: DataFrameWithType,
+      trans: StructuredTransform): Try[(Column, AugmentedDataType)] = trans match {
     case InnerOp(ColExtraction(p)) =>
       for (t <- extractType(adf.rectifiedSchema, p)) yield {
         val c = extractCol(adf, p)
