@@ -55,7 +55,7 @@ class KSession(val id: SessionId) extends Logging {
   private def notifyFinished(path: GlobalPath, result: Try[CellWithType]): Unit = synchronized {
     result match {
       case Success(cwt) =>
-        logger.debug(s"Item $path finished with a success")
+        logger.debug(s"Item $path finished with a success]")
         // Extract the current stats to add them to the result.
         val stats = state.results.status(path) match {
           case Some(ComputationRunning(st)) => st
@@ -137,6 +137,11 @@ object KSession extends Logging {
       queue: Map[ComputationId, Computation]) {
 
     def add(computationId: ComputationId, computation: Computation): State = {
+      logger.debug(s"Adding computation: $computationId")
+      logger.debug(s"Adding computation: trackedItems: ${computation.trackedItems}")
+      computation.itemDependencies.foreach { case (p, l) =>
+        logger.debug(s"Adding computation: dependencies: $p -> $l")
+      }
       // Adding all the tracked nodes to the state as scheduled, so that inbound
       // state requests can already come in while spark finishes to initialize.
       // This is only tracking the observables.

@@ -220,9 +220,32 @@ object SparkRegistry extends Logging {
       }
       val adt = AugmentedDataType.tuple(dfwt.rectifiedSchema, Seq(cellwt.cellType))
       val c1 = DataFrameWithType.asColumn(dfwt).as("_1")
-      val c2 = lit(Cell.toAny(cellwt.cellData)).as("_2")
+      // The cell may need additional wrapping.
+      val c2 = buildColumn(cellwt, session).as("_2")
+      logger.debug(s"broadcastPairBuilder: c2=$c2")
       val df = dfwt.df.select(c1, c2)
+      logger.debug(s"broadcastPairBuilder: df=$df")
       DataFrameWithType.create(df, adt).get
+    }
+
+    private def buildColumn(cwt: CellWithType, session: SparkSession): Column = {
+      // Wrap the non-primitive types
+      val mustWrap = cwt.cellData match {
+          // The array does not need to be wrapped if it contains primitive types,
+          // but it is simpler for now.
+        case _: RowArray => true
+        case _: RowCell => true
+        case _ => false
+      }
+      if (mustWrap) {
+        // Put the content in a UDF.
+        val payload = Cell.toAny(cwt.cellData)
+        def u2(x: Int) = { payload }
+        val localUdf = org.apache.spark.sql.functions.udf(u2 _, cwt.cellType.dataType)
+        localUdf(lit(1))
+      } else {
+        lit(Cell.toAny(cwt.cellData))
+      }
     }
   }
 

@@ -115,7 +115,7 @@ object GroupedReduction extends Logging {
     case AggFunction(n, inputs) =>
       for {
         cols <- sequence(inputs.map(Extraction.extractCol(valCol, _)))
-        c <- SQLFunctionsExtraction.build(n, cols)
+        c <- SQLFunctionsExtraction.buildFunction(n, cols, valCol.ref)
       } yield {
         c
       }

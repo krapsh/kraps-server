@@ -93,10 +93,11 @@ class ExecutionItem(
   lazy val dataframe: DataFrame = dataframeWithType.df
 
   lazy val dataframeWithType: DataFrameWithType = {
-    logger.debug(s"Creating dataframe for node: $path, results=${cache}")
+    val currCache = cacheAsUsed
+    logger.debug(s"Creating dataframe for node: $path")
     val outputs = dependencies.map { item =>
 
-      cacheAsUsed.finalResult(item.path).map(LocalExecOutput.apply)
+      currCache.finalResult(item.path).map(LocalExecOutput.apply)
         .getOrElse(DisExecutionOutput(item.dataframeWithType))
     }
     logger.debug(s"Dependent outputs for node: $path: $outputs")

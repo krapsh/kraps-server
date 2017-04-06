@@ -22,4 +22,6 @@ object KrapshStubs {
   }
 
   def getExpression(c: Column): Expression = c.expr
+
+  def makeColumn(exp: Expression): Column = Column.apply(exp)
 }
