@@ -96,12 +96,11 @@ class ExecutionItem(
     val currCache = cacheAsUsed
     logger.debug(s"Creating dataframe for node: $path")
     val outputs = dependencies.map { item =>
-
-      currCache.finalResult(item.path).map(LocalExecOutput.apply)
+      item.path -> currCache.finalResult(item.path).map(LocalExecOutput.apply)
         .getOrElse(DisExecutionOutput(item.dataframeWithType))
     }
     logger.debug(s"Dependent outputs for node: $path: $outputs")
-    builder.build(outputs, raw.extra, session)
+    builder.build(outputs.map(_._2), raw.extra, session)
   }
 
   lazy val encoderOut: ExpressionEncoder[Row] = {

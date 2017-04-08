@@ -25,6 +25,12 @@ sealed trait Nullable
 case object IsStrict extends Nullable
 case object IsNullable extends Nullable
 
+object Nullable {
+  def fromNullability(isNullable: Boolean): Nullable = {
+    if (isNullable) IsNullable else IsStrict
+  }
+}
+
 
 /**
  * The basic data type used around Krapsh.
@@ -33,7 +39,8 @@ case object IsNullable extends Nullable
  * nullability and strict structures at the top level.
  * @param dataType
  */
-case class AugmentedDataType(dataType: DataType, nullability: Nullable) {
+case class AugmentedDataType (dataType: DataType, nullability: Nullable) {
+
   def isPrimitive: Boolean = dataType match {
     case _: StructType => false
     case _: ArrayType => false
@@ -51,6 +58,32 @@ case class AugmentedDataType(dataType: DataType, nullability: Nullable) {
   }
 
   def isNullable: Boolean = nullability == IsNullable
+
+  /**
+   * Pretty formatting of the output.
+   */
+  override def toString: String = {
+    val s1 = dataType match {
+      case _: IntegerType => "int"
+      case _: DoubleType => "double"
+      case _: StringType => "txt"
+      case _: BooleanType => "bool"
+      case _: LongType => "long"
+      case x: ArrayType =>
+        val sub = AugmentedDataType(x.elementType, Nullable.fromNullability(x.containsNull))
+        "[" +  sub.toString + "]"
+      case st: StructType =>
+        st.fields.map { f =>
+          val sub = AugmentedDataType(f.dataType, Nullable.fromNullability(f.nullable))
+          val x = if (f.name.contains(" ")) { "`" + f.name + "`" } else f.name
+          s"$x:$sub"
+        }.mkString("{", " ", "}")
+    }
+    nullability match {
+      case IsStrict => s1
+      case IsNullable => s"$s1?"
+    }
+  }
 }
 
 object AugmentedDataType {

@@ -27,7 +27,6 @@ object ColumnTransforms extends Logging {
    * @return
    */
   def select(adf: DataFrameWithType, js: JsValue): Try[(Seq[Column], AugmentedDataType)] = {
-    logger.debug(s"select: ENTERING: adf=$adf")
     def convert(cwt: ColumnWithType): (Seq[Column], AugmentedDataType) = {
       cwt.rectifiedSchema.topLevelStruct match {
         case Some(st) =>

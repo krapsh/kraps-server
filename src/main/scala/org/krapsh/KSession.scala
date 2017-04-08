@@ -35,7 +35,6 @@ class KSession(val id: SessionId) extends Logging {
     logger.debug(s"Getting computation info (parsed and sorted):\n" + items.map(_.path))
     val computation = Computation.create(compId, items)
     state = state.add(compId, computation)
-    logger.debug("compute: state is " + state)
     update()
   }
 
@@ -121,7 +120,9 @@ class KSession(val id: SessionId) extends Logging {
         state = state.updateResult(item.path, ComputationFailed(t))
         None
       } else {
-        Some(new TaskRunnable(item, this))
+        val runnable = new TaskRunnable(item, this)
+        logger.debug(s"${item.path}: created runnable $runnable")
+        Some(runnable)
       }
     }
     tasks.foreach(executor.submit)
@@ -134,11 +135,11 @@ object KSession extends Logging {
   // access these).
   private case class State(
       results: ResultCache,
-      queue: Map[ComputationId, Computation]) {
+      queue: Map[ComputationId, Computation]) extends Logging {
 
     def add(computationId: ComputationId, computation: Computation): State = {
       logger.debug(s"Adding computation: $computationId")
-      logger.debug(s"Adding computation: trackedItems: ${computation.trackedItems}")
+      logger.debug(s"Adding computation: trackedItems: ${computation.trackedItems.map(_.path)}")
       computation.itemDependencies.foreach { case (p, l) =>
         logger.debug(s"Adding computation: dependencies: $p -> $l")
       }
@@ -154,6 +155,7 @@ object KSession extends Logging {
     }
 
     def updateResults(up: Seq[(GlobalPath, ComputationResult)]): State = {
+      up.foreach { case (p, r) => logger.debug(s"updateResults: $p -> ${r.getClass.getSimpleName}")}
       copy(results=results.update(up))
     }
 
@@ -165,8 +167,11 @@ object KSession extends Logging {
   private class TaskRunnable(
       item: ExecutionItem,
       session: KSession) extends Runnable with Logging {
+
+    logger.debug(s"Created runnable $this")
+
     override def run(): Unit = {
-      logger.debug(s"Created runnable $this")
+      logger.debug(s"$this: entering run")
       try {
         logger.info(s"Trying to access RDD info for $this")
         // Force the materialization of the dependencies first.
