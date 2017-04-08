@@ -36,7 +36,26 @@ object DataFrameWithType extends Logging {
   def create(df: DataFrame, adt: AugmentedDataType): Try[DataFrameWithType] = {
     AugmentedDataType.isCompatible(adt, df.schema) match {
       case Some(err) => Failure(new KrapshException(err))
-      case None => Success(new DataFrameWithType(df, adt))
+      case None =>
+        // Reset the name of the top column, if possible.
+        // After long computations, this name may become very verbose.
+        val df2 = adt.topLevelStruct match {
+          case Some(_) => df
+            // This is a top level structure, the names of the fields are already set.
+          case None =>
+            // The name of the top-level field is not important, reset it to 'value'.
+            val fname = df.schema.fieldNames match {
+              case Array(f1) => f1
+              case x => KrapshException.fail(
+                s"Could not extract single field name in $df")
+            }
+            if (fname != "value") {
+              df.withColumnRenamed(fname, "value")
+            } else {
+              df
+            }
+        }
+        Success(new DataFrameWithType(df2, adt))
     }
   }
 
@@ -44,7 +63,7 @@ object DataFrameWithType extends Logging {
    * Uses the structure of the dataframe as the strict, top-level structure.
    */
   def createFromStruct(df: DataFrame): DataFrameWithType = {
-    DataFrameWithType(df, AugmentedDataType(df.schema, IsStrict))
+    DataFrameWithType.create(df, AugmentedDataType(df.schema, IsStrict)).get
   }
 
   /**
@@ -54,7 +73,7 @@ object DataFrameWithType extends Logging {
   def createDenormalized(df: DataFrame): Try[DataFrameWithType] = {
     df.schema.fields match {
       case Array(f) =>
-        Success(DataFrameWithType(df, AugmentedDataType.fromField(f)))
+        DataFrameWithType.create(df, AugmentedDataType.fromField(f))
       case x => Failure(new Exception(s"Expected dataframe with single column, got type $df"))
     }
   }
@@ -103,7 +122,7 @@ object DataFrameWithType extends Logging {
         val rowType = LocalSparkConversion.normalizeDataTypeIfNeeded(adt)
         val rows: Seq[Row] = cells.map(_.row)
         val df = session.createDataFrame(rows.asJava, rowType)
-        Success(DataFrameWithType(df, adt))
+        DataFrameWithType.create(df, adt)
       case x =>
         Failure(new KrapshException(s"Found multiple types: $x"))
     }
