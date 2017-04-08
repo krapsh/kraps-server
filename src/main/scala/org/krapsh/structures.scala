@@ -191,7 +191,17 @@ class ResultCache(
   }
 
   private def update(path: GlobalPath, computationResult: ComputationResult): ResultCache = {
-    val m = map + (path -> computationResult)
+    // We may have already run a computation before.
+    // If it did not end up in a failure, we are not going to recompute it.
+    val bestResult = map.get(path) match {
+      case Some(oldRes) =>
+        ComputationResult.replaceWithMostUseful(oldRes, computationResult)
+      case _ => computationResult
+    }
+    if (bestResult == computationResult) {
+      logger.debug(s"ResultCache: update: $path -> $bestResult")
+    }
+    val m = map + (path -> bestResult)
     val latest = latestValues.get(path.session -> path.local) match {
         // We have seen a younger value.
       case Some(x) if path.computation.ranBefore(x) => latestValues
@@ -241,3 +251,20 @@ case class ComputationDone(
     stats: Option[SparkComputationStats]) extends ComputationResult
 
 case class ComputationFailed(msg: Throwable) extends ComputationResult
+
+object ComputationResult {
+  // Given two results, returns the one that is the most relevant.
+  // Since computations are cached, we always reserve an old result, even if the
+  // cache is updated with a restart result.
+  def replaceWithMostUseful(m1: ComputationResult, m2: ComputationResult): ComputationResult = {
+    if (priority(m1) < priority(m2)) { m2 } else { m1 }
+  }
+
+  private def priority(m: ComputationResult): Int = m match {
+    case _: ComputationFailed => 0
+    case ComputationScheduled => 1
+    case ComputationRunning(None) => 2
+    case ComputationRunning(Some(_)) => 3
+    case _: ComputationDone => 4
+  }
+}
