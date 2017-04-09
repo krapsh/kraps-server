@@ -21,13 +21,24 @@ import org.krapsh.KrapshException
 
 import scala.util.{Failure, Success, Try}
 
-sealed trait Nullable
-case object IsStrict extends Nullable
-case object IsNullable extends Nullable
+sealed trait Nullable {
+  def intersect(other: Nullable): Nullable
+}
+case object IsStrict extends Nullable {
+  override def intersect(other: Nullable): Nullable = other
+}
+case object IsNullable extends Nullable  {
+  override def intersect(other: Nullable): Nullable = IsNullable
+}
 
 object Nullable {
   def fromNullability(isNullable: Boolean): Nullable = {
     if (isNullable) IsNullable else IsStrict
+  }
+
+  // strict if all the inputs are strict.
+  def intersect(seq: Seq[Nullable]): Nullable = {
+    if (seq.contains(IsNullable)) IsNullable else IsStrict
   }
 }
 

@@ -33,11 +33,12 @@ object SQLFunctionsExtraction extends Logging {
             case x =>
               KrapshStubs.makeColumn(x)
           }
-          // As an approximation, the types are going to be the ones from Spark.
-          // We may loose some information here, but it should be good enough as a start.
-          // In order to determine the nullability, we need to apply the expression first.
-
-          val adt = checkNullability(c, ref)
+          // Because the nullability is too extravagant in Spark, the following rules are applied:
+          //  - the nullability is as strict as the inputs let it be, unless the function is
+          // whitelisted
+          val inputNullability = Nullable.intersect(inputs.map(_.rectifiedSchema.nullability))
+          logger.debug(s"buildFunction: inferred=$inputNullability inputs=$inputs")
+          val adt = inferDataType(c, ref, inputNullability)
           val cwt = ColumnWithType(c, adt, ref)
           logger.debug(s"buildFunction: cwt=$cwt")
           // The output type may not be supported by Karps, so it needs to be rectified.
@@ -51,11 +52,13 @@ object SQLFunctionsExtraction extends Logging {
     }
   }
 
-  private def checkNullability(c: Column, df: DataFrame): AugmentedDataType = {
+  private def inferDataType(
+      c: Column, df: DataFrame, inputNullability: Nullable): AugmentedDataType = {
+    // Apply the expression first on the dataframe.
     val df2 = df.select(c)
     df2.schema.fields match {
       case Array(f1) =>
-        AugmentedDataType.fromField(f1)
+        AugmentedDataType(f1.dataType, inputNullability)
       case _ => KrapshException.fail(s"df=$df df2=$df2 c=$c")
     }
   }

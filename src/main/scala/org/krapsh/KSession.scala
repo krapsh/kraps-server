@@ -179,15 +179,11 @@ object KSession extends Logging {
           it.dataframe
           it.logical
         }
-        logger.info("Parent data frames:")
-        for (it <- item.dependencies) {
-          logger.info(s"Dependency logical: ${it.logical.hashCode()}" +
-            s" ${it.dataframe} \n${it.logical}")
-        }
         logger.info(s"logical: ${item.logical.hashCode()} \n${item.logical}")
         for (c <- item.logical.children) {
           logger.info(s"logical child: ${c.hashCode()} \n$c")
         }
+        logger.info(s"$this: schema=${item.dataframe.schema} ${item.rectifiedDataFrameSchema}")
         logger.info(s"physical: ${item.executedPlan}")
         item.dataframe.explain(true)
         logger.info(s"Spark info for $this: rdd=${item.rddId} dependencies=${item.RDDDependencies}")
@@ -235,8 +231,10 @@ object KSession extends Logging {
   private def offerNext(state: State): Seq[ExecutionItem] = {
     state.queue.values.flatMap { comp =>
       val items = offerComp(state.results, comp)
-      val paths = items.map(_.path)
-      logger.debug(s"Computation ${comp.id}: items available for processing: $paths")
+      if (items.nonEmpty) {
+        val paths = items.map(_.path)
+        logger.debug(s"Computation ${comp.id}: items available for processing: $paths")
+      }
       items
     } .toSeq
   }
