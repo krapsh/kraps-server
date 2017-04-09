@@ -7,17 +7,17 @@ import spray.json.{DefaultJsonProtocol, JsArray, JsBoolean, JsNull, JsNumber, Js
 
 case class UntypedNodeJson(
     locality: String,
-    name: String,
+    path: Seq[String],
     op: String,
-    parents: Seq[String],
-    logicalDependencies: Seq[String],
+    parents: Seq[Seq[String]],
+    logicalDependencies: Seq[Seq[String]],
     extra: JsValue,
     _type: JsValue) {
   def ppString: String = {
-    val ps = parents.map(p => "\n    - " + p).mkString("")
-    val deps = logicalDependencies.map(p => "\n    - " + p).mkString("")
+    val ps = parents.map(p => "\n    - " + Path.create(p)).mkString("")
+    val deps = logicalDependencies.map(p => "\n    - " + Path.create(p)).mkString("")
     s"""{
-       |  name: $name
+       |  path: $path
        |  op: $op
        |  parents:$ps
        |  dependencies:$deps
@@ -47,7 +47,6 @@ object BatchComputationResultJson {
          ComputationResultJson.fromResult(s))}
      BatchComputationResultJson(status.target.local.repr, res.toList)
    }
-
 }
 
 case class ComputationResultJson(

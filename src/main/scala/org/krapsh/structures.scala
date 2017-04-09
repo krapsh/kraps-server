@@ -14,7 +14,17 @@ case class SessionId(id: String) extends AnyVal
 /**
  * The local path in a computation. Does not include the session or the computation.
  */
-case class Path(repr: Seq[String]) extends AnyVal
+case class Path private (repr: Seq[String]) extends AnyVal {
+
+  override def toString: String = repr.mkString("/")
+}
+
+object Path {
+  def create(repr: Seq[String]): Path = {
+    require(repr.size >= 1, repr)
+    Path(repr)
+  }
+}
 
 /**
  * The ID of a computation.
@@ -28,13 +38,24 @@ object ComputationId {
   val UnknownComputation = ComputationId("-1")
 }
 
-case class GlobalPath(
+case class GlobalPath private (
     session: SessionId,
     computation: ComputationId,
     local: Path) {
   override def toString: String = {
     val p = local.repr.mkString("/")
     s"//${session.id}/${computation.repr}/$p"
+  }
+}
+
+object GlobalPath {
+  def from(session: SessionId, cid: ComputationId, local: Path): GlobalPath = {
+    // Do an extra check on the path to remove a spurious CID.
+    if (local.repr.head == cid.repr) {
+      require(local.repr.length >= 2, local)
+      GlobalPath(session, cid, Path(local.repr.tail))
+    }
+    else GlobalPath(session, cid, Path(local.repr))
   }
 }
 

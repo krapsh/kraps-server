@@ -142,8 +142,8 @@ trait MyService extends HttpService with Logging {
         }
       } else {
         // Asking for a given element.
-        val p = Path(rest.split("/"))
-        val gp = GlobalPath(sessionId, computationId, p)
+        val p = Path.create(rest.split("/"))
+        val gp = GlobalPath.from(sessionId, computationId, p)
 
         get {
           complete {
