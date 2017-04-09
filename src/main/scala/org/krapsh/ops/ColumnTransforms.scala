@@ -8,7 +8,7 @@ import org.apache.spark.sql.{Column, DataFrame, KrapshStubs}
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry
 import org.krapsh.{ColumnWithType, DataFrameWithType, KrapshException}
 import org.krapsh.ops.Extraction.{FieldName, FieldPath}
-import org.krapsh.structures.{AugmentedDataType, IsNullable, IsStrict, JsonSparkConversions}
+import org.krapsh.structures._
 import spray.json.{JsArray, JsObject, JsValue}
 
 import scala.util.{Failure, Success, Try}
@@ -22,8 +22,6 @@ object ColumnTransforms extends Logging {
   /**
    * Starts from an unrectified dataframe represented as a column, and
    * recursively extracts the requested fields.
-   *
-   * @param js
    * @return
    */
   def select(adf: DataFrameWithType, js: JsValue): Try[(Seq[Column], AugmentedDataType)] = {
@@ -131,10 +129,12 @@ object ColumnTransforms extends Logging {
 
   private def extractPath(cwt: ColumnWithType, fieldPath: FieldPath): Try[ColumnWithType] = {
     val adt = extractType(cwt.rectifiedSchema, fieldPath)
-    adt.map { adt2 =>
+    val res = adt.map { adt2 =>
       val c = extractCol(cwt.col, fieldPath)
       ColumnWithType(c, adt2, cwt.ref)
     }
+    logger.debug(s"extractPath: cwt=$cwt fieldPath=$fieldPath res=$res")
+    res
   }
 
 
@@ -168,29 +168,15 @@ object ColumnTransforms extends Logging {
         Success(adt)
       case (FieldPath(h :: t), AugmentedDataType(st: StructType, nullability)) =>
         // Look into a sub field.
-        val res = st.fields.find(_.name == h.name) match {
+        st.fields.find(_.name == h.name) match {
           case None => Failure(new Exception(s"Cannot find field $h in $st"))
 
-          case Some(StructField(_, st2: StructType, nullable, _)) if nullable =>
-            // We can go deeper in the structure, but we mark the result as nullable.
-            val adt2 = AugmentedDataType(st2, IsNullable)
-            extractType(adt2, FieldPath(t))
-          case Some(StructField(_, st2: StructType, _, _)) =>
-            // We can go deeper in the structure.
-            // The nullability will depend on the underlying structure.
-            val adt2 = AugmentedDataType(st2, IsNullable)
-            extractType(adt2, FieldPath(t))
-          case Some(StructField(_, dt, nullable, _)) if t.isEmpty =>
-            // We have reached the terminal node
-            val nullability = if (nullable) IsNullable else IsStrict
-            Success(AugmentedDataType(dt, nullability))
+          case Some(StructField(_, dt, nullable, _)) =>
+            val thisNullability = Nullable.fromNullability(nullable).intersect(nullability)
+            extractType(AugmentedDataType(dt, thisNullability), FieldPath(t))
+
           case x =>
             Failure(new Exception(s"Failed to match $path in structure $st"))
-        }
-        if (nullability == IsNullable) {
-          res.map(_.copy(nullability = IsNullable))
-        } else {
-          res
         }
       case _ => Failure(new Exception(s"Should be a struct: $adt for $path"))
     }

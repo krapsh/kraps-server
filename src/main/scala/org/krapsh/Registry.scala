@@ -379,12 +379,15 @@ object GlobalRegistry extends Logging {
     createBuilder(opName)(fun1)
   }
 
+  // Because of Spark's extravagant handling of nullability, this function assumes that the result
+  // is as strict as the strictness of the inputs. This is only done for the top-level operations.
+  // For the types themselves, Spark is trusted.
   def createLocalBuilder2(opName: String)(fun: (Column, Column) => Column): OpBuilder = {
     def fun1(items: Seq[ExecutionOutput], js: JsValue, session: SparkSession): DataFrameWithType = {
       val df = buildLocalDF(items, 2, session)
       val c1 = df.col("_1")
       val c2 = df.col("_2")
-      buildLocalDF2(df, fun(c1, c2))
+      buildLocalDF2(df, fun(c1, c2), nullability(items))
     }
     createBuilderSession(opName)(fun1)
   }
@@ -393,9 +396,16 @@ object GlobalRegistry extends Logging {
     def fun1(items: Seq[ExecutionOutput], js: JsValue, session: SparkSession): DataFrameWithType = {
       val df = buildLocalDF(items, 1, session)
       val c1 = df.col("_1")
-      buildLocalDF2(df, fun(c1))
+      buildLocalDF2(df, fun(c1), nullability(items))
     }
     createBuilderSession(opName)(fun1)
+  }
+
+  private def nullability(s: Seq[ExecutionOutput]): Nullable = {
+    Nullable.intersect(s.map {
+      case LocalExecOutput(row) => row.cellType.nullability
+      case DisExecutionOutput(adf) => adf.rectifiedSchema.nullability
+    })
   }
 
   private def buildLocalDF(
@@ -421,21 +431,24 @@ object GlobalRegistry extends Logging {
     val r = Row(rdata: _*)
     logger.debug(s"buildLocalDF: r=$r")
     val df = session.createDataFrame(Seq(r).asJava, s)
-    logger.debug(s"buildLocalDF: df=$df")
+    logger.debug(s"buildLocalDF: df=$df schema=${df.schema}")
     df
   }
 
-  private def buildLocalDF2(df: DataFrame, c: Column): DataFrameWithType = {
+  private def buildLocalDF2(df: DataFrame, c: Column, overrideNl: Nullable): DataFrameWithType = {
     val dfout = df.select(c)
-    logger.debug(s"buildLocalDF2: dfout=$dfout")
     // TODO: all below is just for debugging
-    val res = dfout.collect()
-    val out = res match {
-      case Array(Row(x)) =>
+    val res = dfout.collect().toSeq
+    res match {
+      case Seq(Row(x)) =>
       case _ => throw new Exception(s"Expected single row in $res")
     }
-    // It is local, the
-    DataFrameWithType.createDenormalized(dfout).get
+    // It is local, it should always work.
+    val adf = DataFrameWithType.createDenormalized(dfout).get
+    // Override the nullability of the top element, it is not to be trusted.
+    val res2 = adf.copy(rectifiedSchema = adf.rectifiedSchema.copy(nullability = overrideNl))
+    logger.debug(s"buildLocalDF2: dfout=$dfout schema=${dfout.schema} final=$res2")
+    res2
   }
 }
 
