@@ -1,23 +1,25 @@
 package org.karps
 
 import scala.concurrent.duration._
+
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import org.karps.ops.{HdfsPath, HdfsResourceResult}
 import spray.can.Http
 import spray.http.MediaTypes._
 import spray.httpx.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
 import spray.routing._
+
 import org.karps.structures.{BatchComputationResultJson, ComputationResultJson, UntypedNodeJson}
+import org.karps.ops.{HdfsPath, HdfsResourceResult}
 
 
 object Boot extends App {
 
-  val krapshPort = 8081
+  val karpsPort = 8081
   val interface = "localhost"
 
   SparkRegistry.setup()
@@ -30,7 +32,7 @@ object Boot extends App {
 
   implicit val timeout = Timeout(5.seconds)
   // start a new HTTP server on port 8080 with our service actor as the handler
-  IO(Http) ? Http.Bind(service, interface = interface, port = krapshPort)
+  IO(Http) ? Http.Bind(service, interface = interface, port = karpsPort)
 }
 
 // we don't implement our route structure directly in the service actor because
@@ -57,13 +59,13 @@ class MyServiceActor extends Actor with MyService {
 
 case class Person(name: String, favoriteNumber: Int)
 
-object KrapshServerImplicits extends DefaultJsonProtocol with SprayJsonSupport {
+object KarpsServerImplicits extends DefaultJsonProtocol with SprayJsonSupport {
   implicit val PortofolioFormats = jsonFormat2(Person)
   implicit val UntypedNodeJsonF = jsonFormat7(UntypedNodeJson)
   implicit val HdfsResourceResultF = jsonFormat3(HdfsResourceResult)
 }
 
-import KrapshServerImplicits._
+import KarpsServerImplicits._
 
 
 

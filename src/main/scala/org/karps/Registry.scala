@@ -1,24 +1,26 @@
 package org.karps
 
 import scala.collection.JavaConverters._
+import scala.util.{Failure, Success, Try}
+
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import spray.json.{JsObject, JsValue}
+
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.functions.{struct => sqlStruct}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql._
+
 import org.karps.ops.Extraction
 import org.karps.row.Cell
 import org.karps.structures._
 
-import scala.util.parsing.json.JSONObject
-import scala.util.{Failure, Success, Try}
 
 /**
- * A dataframe, along with the type as Krapsh wants to see it.
+ * A dataframe, along with the type as Karps wants to see it.
  *
- * Krapsh and Spark differ in their handling of nullability and primitive types:
- *  - karps allows primitive types as top-level, while Spark only accepts structures at the top
+ * Karps and Spark differ in their handling of nullability and primitive types:
+ *  - Karps allows primitive types as top-level, while Spark only accepts structures at the top
  *  level
  *  - Spark does not correctly handle nullability in a number of common situations, so the exact
  *  type has to be overridden by providing the correct data type.
@@ -27,7 +29,7 @@ import scala.util.{Failure, Success, Try}
  * for now.
  *
  * @param df the dataframe as manipulated by Spark
- * @param rectifiedSchema the type of the dataframe, as seen by Krapsh
+ * @param rectifiedSchema the type of the dataframe, as seen by Karps
  */
 case class DataFrameWithType private (df: DataFrame, rectifiedSchema: AugmentedDataType)
 
@@ -35,7 +37,7 @@ object DataFrameWithType extends Logging {
 
   def create(df: DataFrame, adt: AugmentedDataType): Try[DataFrameWithType] = {
     AugmentedDataType.isCompatible(adt, df.schema) match {
-      case Some(err) => Failure(new KrapshException(err))
+      case Some(err) => Failure(new KarpsException(err))
       case None =>
         // Reset the name of the top column, if possible.
         // After long computations, this name may become very verbose.
@@ -46,7 +48,7 @@ object DataFrameWithType extends Logging {
             // The name of the top-level field is not important, reset it to 'value'.
             val fname = df.schema.fieldNames match {
               case Array(f1) => f1
-              case x => KrapshException.fail(
+              case x => KarpsException.fail(
                 s"Could not extract single field name in $df")
             }
             if (fname != "value") {
@@ -124,14 +126,14 @@ object DataFrameWithType extends Logging {
         val df = session.createDataFrame(rows.asJava, rowType)
         DataFrameWithType.create(df, adt)
       case x =>
-        Failure(new KrapshException(s"Found multiple types: $x"))
+        Failure(new KarpsException(s"Found multiple types: $x"))
     }
   }
 }
 
 
 /**
- * A data column, along with the type as Krapsh expects it.
+ * A data column, along with the type as Karps expects it.
  *
  * Unlike Spark's columns, it also stores its refering dataframe.
  */
@@ -155,7 +157,7 @@ object ColumnWithType extends Logging {
       ref <- reft
       s <- Try(sqlStruct(cols.map(_.col):_*))
     } yield {
-      val dt = KrapshStubs.getExpression(s).dataType
+      val dt = KarpsStubs.getExpression(s).dataType
       ColumnWithType(s, AugmentedDataType(dt, IsStrict), ref)
     }
   }
@@ -230,9 +232,9 @@ class Registry extends Logging {
         val res = c.status(pointerPath) match {
           case Some(d: ComputationDone) =>
             d.result.getOrElse {
-              KrapshException.fail(s"Expected a finished computation for $pointerPath: $d")
+              KarpsException.fail(s"Expected a finished computation for $pointerPath: $d")
             }
-          case x => KrapshException.fail(
+          case x => KarpsException.fail(
             s"Expected a finished computation for $pointerPath, got $x")
         }
         SparkRegistry.pointerOpBuilder(res)

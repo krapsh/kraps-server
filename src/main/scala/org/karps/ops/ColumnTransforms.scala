@@ -4,9 +4,9 @@ package org.karps.ops
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{Column, DataFrame, KrapshStubs}
+import org.apache.spark.sql.{Column, DataFrame, KarpsStubs}
 import org.apache.spark.sql.catalyst.analysis.FunctionRegistry
-import org.karps.{ColumnWithType, DataFrameWithType, KrapshException}
+import org.karps.{ColumnWithType, DataFrameWithType, KarpsException$}
 import org.karps.ops.Extraction.{FieldName, FieldPath}
 import org.karps.structures._
 import spray.json.{JsArray, JsObject, JsValue}

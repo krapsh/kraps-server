@@ -61,7 +61,7 @@ class KSession(val id: SessionId) extends Logging {
           case _ => None
         }
         state = state.updateResult(path, ComputationDone(Some(cwt), stats))
-      case Failure(e: KrapshException) =>
+      case Failure(e: KarpsException) =>
         logger.warn(s"Item $path finished with an identified internal failure: $e", e)
         state = state.updateResult(path, ComputationFailed(e))
       case Failure(e) =>
@@ -107,7 +107,7 @@ class KSession(val id: SessionId) extends Logging {
             case Some(_: ComputationDone) => false
             case Some(_: ComputationFailed) => true
             case None => false // Drop nodes that do not require computations.
-            case x => KrapshException.fail(s"status: $x for path $p")
+            case x => KarpsException.fail(s"status: $x for path $p")
           }
       }
       // Check that all the parents are a success
@@ -115,7 +115,7 @@ class KSession(val id: SessionId) extends Logging {
         logger.debug(s"Preemptive failure of ${item.path} previous=$previousFailures, state=" +
           s"${state.results}")
         // Directly register this task as a failure.
-        val t = new KrapshException(
+        val t = new KarpsException(
           s"Computation aborted because a dependency failed: $previousFailures")
         state = state.updateResult(item.path, ComputationFailed(t))
         None

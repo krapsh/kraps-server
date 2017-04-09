@@ -106,19 +106,19 @@ object Computation {
   /**
    * Checks that all the items are presented in topological order.
    */
-  @throws[KrapshException]
+  @throws[KarpsException]
   private def checkTopological(items: Seq[ExecutionItem]): Unit = {
     var seen: Set[GlobalPath] = Set.empty
     for (item <- items) {
       for (parentPath <- item.dependencies.map(_.path)) {
         if (!seen.contains(parentPath)) {
-          KrapshException.fail(s"Element out of topological order:" +
+          KarpsException.fail(s"Element out of topological order:" +
             s"parent dependency $parentPath expected before ${item.path}")
         }
       }
       for (parentPath <- item.logicalDependencies.map(_.path)) {
         if (!seen.contains(parentPath)) {
-          KrapshException.fail(s"Element out of topological order:" +
+          KarpsException.fail(s"Element out of topological order:" +
             s" logical dependency $parentPath expected before ${item.path}")
         }
       }

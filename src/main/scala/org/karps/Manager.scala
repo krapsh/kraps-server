@@ -7,7 +7,7 @@ import org.apache.spark.sql.SparkSession
 import org.karps.ops.{HdfsPath, HdfsResourceResult, SourceStamps}
 import org.karps.structures.UntypedNodeJson
 
-class KrapshListener(manager: Manager) extends SparkListener with Logging {
+class KarpsListener(manager: Manager) extends SparkListener with Logging {
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {
     logger.debug(s"stage completed: $stageCompleted")
   }
@@ -26,7 +26,7 @@ class Manager extends Logging {
   logger.info("Manager starting")
 
   private var sessions: Map[SessionId, KSession] = Map.empty
-  private lazy val listener = new KrapshListener(this)
+  private lazy val listener = new KarpsListener(this)
   // For now, there is a unique session for everything, but it should be split
   // between each of the sessions.
   private lazy val sparkSession = SparkSession.builder().getOrCreate()

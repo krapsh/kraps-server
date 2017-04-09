@@ -216,7 +216,7 @@ object SparkRegistry extends Logging {
         session: SparkSession): DataFrameWithType = {
       val (dfwt, cellwt) = parents match {
         case Seq(DisExecutionOutput(x), LocalExecOutput(y)) => x -> y
-        case _ => KrapshException.fail(s"Expected (dataframe, observable), got $parents")
+        case _ => KarpsException.fail(s"Expected (dataframe, observable), got $parents")
       }
       val adt = AugmentedDataType.tuple(dfwt.rectifiedSchema, Seq(cellwt.cellType))
       val c1 = DataFrameWithType.asColumn(dfwt).as("_1")
@@ -262,7 +262,7 @@ object SparkRegistry extends Logging {
       require(parents.nonEmpty)
       val cellswt = parents.map {
         case LocalExecOutput(row) => row
-        case x => KrapshException.fail(s"org.Spark.LocalPack: Expected a local element, got $x")
+        case x => KarpsException.fail(s"org.Spark.LocalPack: Expected a local element, got $x")
       }
       val c = CellWithType.makeTuple(cellswt.head, cellswt.tail)
       DataFrameWithType.fromCells(Seq(c), session).get

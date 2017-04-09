@@ -104,7 +104,7 @@ class ExecutionItem(
   }
 
   lazy val encoderOut: ExpressionEncoder[Row] = {
-    KrapshStubs.getBoundEncoder(dataframe)
+    KarpsStubs.getBoundEncoder(dataframe)
   }
 
   lazy val queryExecution = dataframe.queryExecution
@@ -113,12 +113,12 @@ class ExecutionItem(
 
   lazy val rdd: RDD[InternalRow] = {
     // Get the execution id first.
-    KrapshStubs.withNewExecutionId(session, queryExecution) {
+    KarpsStubs.withNewExecutionId(session, queryExecution) {
       _execId = Option(session.sparkContext.getLocalProperty("spark.sql.execution.id"))
       require(_execId.isDefined)
     }
 
-    KrapshStubs.withExecutionId(session.sparkContext, executionId) {
+    KarpsStubs.withExecutionId(session.sparkContext, executionId) {
       executedPlan.execute()
     }
   }
@@ -127,7 +127,7 @@ class ExecutionItem(
 
   lazy val collectedInternal: Seq[InternalRow] = {
     val results = ArrayBuffer[InternalRow]()
-    KrapshStubs.withExecutionId(session.sparkContext, executionId) {
+    KarpsStubs.withExecutionId(session.sparkContext, executionId) {
       rdd.collect().foreach(r => results.append(r.copy()))
     }
     results

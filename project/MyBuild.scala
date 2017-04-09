@@ -60,16 +60,17 @@ object MyBuild extends Build {
 
   lazy val distribute = Project("distribution", file(".")).settings(
     target := target.value / "distribution",
-    spName := "karps/kraps-server",
+    spName := "karps/karps-server",
     credentials += Credentials(Path.userHome / ".ivy2" / ".credentials"),
     spShortDescription := "Experimental REST API to run Spark computation graphs",
-    spDescription := """This is the server part for the Kraps project. It provides a simple REST API to execute
-                   |data pipelines with Spark in a language independent manner. It complements (on the JVM side) the
-                   |Haskell bindings available in Krapsh.
+    spDescription := """This is the server part for the Karps project. It provides a simple REST
+                   |API to execute
+                   |data pipelines with Spark in a language independent manner. It complements
+                   |(on the JVM side) the Haskell bindings available in Karps.
                    |
                    |This project is only a technological preview. The API may change in the future.
                    |""".stripMargin,
-    spHomepage := "https://github.com/karps/kraps-server",
+    spHomepage := "https://github.com/krapsh/kraps-server",
     spAppendScalaVersion := true,
     libraryDependencies := nonShadedDependencies,
     libraryDependencies ++= sparkDependencies.map(_ % "provided"),
