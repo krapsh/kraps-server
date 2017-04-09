@@ -1,13 +1,13 @@
-package org.krapsh.ops
+package org.karps.ops
 
 import org.apache.spark.sql.{DataFrame, DataFrameReader}
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.apache.spark.sql.types._
-import org.krapsh.row._
+import org.karps.row._
 import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue}
 
 import scala.util.{Failure, Success, Try}
-import org.krapsh.structures._
+import org.karps.structures._
 
 /**
  * Reader objects for Spark.

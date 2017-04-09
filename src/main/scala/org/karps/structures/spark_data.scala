@@ -5,19 +5,19 @@
 //  - the data is transported in compact json (no struct, only arrays): a SQL datatype
 //    is always required for parsing
 //  - the basic unit of type in Spark is the Row with a StructType, while the basic
-//    unit of data in Krapsh is the Cell with a DataType. The functions below make sure
+//    unit of data in Karps is the Cell with a DataType. The functions below make sure
 //    that the data can be converted back and forth.
-package org.krapsh.structures
+package org.karps.structures
 
-import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, RootJsonWriter}
+import spray.json.{JsArray, JsBoolean, JsObject, JsString, JsValue, RootJsonFormat}
+
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
 import org.apache.spark.sql.types._
-import org.krapsh.row.{AlgebraicRow, Cell, RowArray, RowCell}
-import spray.json.DefaultJsonProtocol._
+
+import org.karps.row.{AlgebraicRow, Cell, RowCell}
 import spray.json._
-import DefaultJsonProtocol._
-import org.krapsh.KrapshException
+import org.karps.KarpsException
 
 import scala.util.{Failure, Success, Try}
 
@@ -44,7 +44,7 @@ object Nullable {
 
 
 /**
- * The basic data type used around Krapsh.
+ * The basic data type used around Karps.
  *
  * This datatype compensates some issues with Spark datatypes, especially involving
  * nullability and strict structures at the top level.
@@ -117,7 +117,7 @@ object AugmentedDataType {
   def fromStruct(s: Seq[(String, AugmentedDataType)]): Try[AugmentedDataType] = {
     // I could never figure out if Spark allows repeated field names -> disallow.
     if (s.map(_._1).distinct.size != s.size) {
-      Failure(new KrapshException(s"Duplicate fields in ${s.map(_._1)}"))
+      Failure(new KarpsException(s"Duplicate fields in ${s.map(_._1)}"))
     } else {
       val fields = s.map { case (name, adt) =>
         StructField(name, adt.dataType, nullable = adt.nullability == IsNullable)
@@ -425,10 +425,10 @@ object LocalSparkConversion {
 }
 
 /**
- * Performs a number of conversions between the data as represented by krapsh
+ * Performs a number of conversions between the data as represented by karps
  * and the data accepted by Spark.
  *
- * All the data in a dataframe or in a row has to be a struct, but krapsh also
+ * All the data in a dataframe or in a row has to be a struct, but karps also
  * accepts primitive, non-nullable datatypes to be represented in a dataframe
  * or in a row. This is why there is a normalization process.
  * All data which is a non-nullable, primitive type associated with column name "_1

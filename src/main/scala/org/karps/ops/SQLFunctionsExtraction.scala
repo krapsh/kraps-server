@@ -1,16 +1,16 @@
-package org.krapsh.ops
-
-import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import org.apache.spark.sql.{Column, KrapshStubs, _}
-import org.apache.spark.sql.catalyst.analysis.FunctionRegistry
-import org.apache.spark.sql.catalyst.expressions.Expression
-import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateFunction
-import org.apache.spark.sql.types.{IntegerType, LongType}
-import org.krapsh.{ColumnWithType, KrapshException}
-import org.krapsh.structures.{AugmentedDataType, IsNullable, IsStrict, Nullable}
+package org.karps.ops
 
 import scala.util.{Failure, Success, Try}
 
+import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
+
+import org.apache.spark.sql.{Column, KarpsStubs, _}
+import org.apache.spark.sql.catalyst.analysis.FunctionRegistry
+import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateFunction
+import org.apache.spark.sql.types.{IntegerType, LongType}
+
+import org.karps.{ColumnWithType, KarpsException}
+import org.karps.structures.{AugmentedDataType, IsStrict, Nullable}
 
 object SQLFunctionsExtraction extends Logging {
   type SQLFunctionName = String
@@ -21,7 +21,7 @@ object SQLFunctionsExtraction extends Logging {
       ref: DataFrame): Try[ColumnWithType] = {
     FunctionRegistry.builtin.lookupFunctionBuilder(funName.toLowerCase) match {
       case Some(builder) =>
-        val exps = inputs.map(_.col).map(KrapshStubs.getExpression)
+        val exps = inputs.map(_.col).map(KarpsStubs.getExpression)
         val expt = Try {
           builder.apply(exps)
         }
@@ -29,9 +29,9 @@ object SQLFunctionsExtraction extends Logging {
           logger.debug(s"buildFunction: exp=$exp")
           val c = exp match {
             case agg: AggregateFunction =>
-              KrapshStubs.makeColumn(agg.toAggregateExpression(isDistinct = false))
+              KarpsStubs.makeColumn(agg.toAggregateExpression(isDistinct = false))
             case x =>
-              KrapshStubs.makeColumn(x)
+              KarpsStubs.makeColumn(x)
           }
           // Because the nullability is too extravagant in Spark, the following rules are applied:
           //  - the nullability is as strict as the inputs let it be, unless the function is
@@ -47,7 +47,7 @@ object SQLFunctionsExtraction extends Logging {
           rectified
         }
 
-      case None => Failure(new KrapshException(s"Could not find function name '$funName' in the " +
+      case None => Failure(new KarpsException(s"Could not find function name '$funName' in the " +
         s"spark registry"))
     }
   }
@@ -59,7 +59,7 @@ object SQLFunctionsExtraction extends Logging {
     df2.schema.fields match {
       case Array(f1) =>
         AugmentedDataType(f1.dataType, inputNullability)
-      case _ => KrapshException.fail(s"df=$df df2=$df2 c=$c")
+      case _ => KarpsException.fail(s"df=$df df2=$df2 c=$c")
     }
   }
 
@@ -72,7 +72,7 @@ object SQLFunctionsExtraction extends Logging {
     (FunctionRegistry.expressions.get(n.toLowerCase) match {
       case None => Failure(new Exception(s"Cannot find $n in the set of builtin functions"))
       case Some((info, builder)) =>
-        val e = builder.apply(inputs.map(i => KrapshStubs.getExpression(i.col)))
+        val e = builder.apply(inputs.map(i => KarpsStubs.getExpression(i.col)))
         e match {
           case agg: AggregateFunction =>
             Success(new Column(agg.toAggregateExpression(isDistinct = false)))

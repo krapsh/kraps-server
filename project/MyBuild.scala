@@ -51,8 +51,8 @@ object MyBuild extends Build {
     libraryDependencies ++= sparkDependencies.map(_ % "provided"),
     libraryDependencies ++= shadedDependencies,
     assemblyShadeRules in assembly := Seq(
-      ShadeRule.rename("com.google.protobuf.**" -> "org.krapsh.shaded.protobuf3.@1").inAll,
-      ShadeRule.rename("shapeless.**" -> "org.krapsh.shaded.shapeless.@1").inAll
+      ShadeRule.rename("com.google.protobuf.**" -> "org.karps.shaded.protobuf3.@1").inAll,
+      ShadeRule.rename("shapeless.**" -> "org.karps.shaded.shapeless.@1").inAll
     ),
     assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
   ).settings(commonSettings: _*)
@@ -60,12 +60,13 @@ object MyBuild extends Build {
 
   lazy val distribute = Project("distribution", file(".")).settings(
     target := target.value / "distribution",
-    spName := "krapsh/kraps-server",
+    spName := "karps/karps-server",
     credentials += Credentials(Path.userHome / ".ivy2" / ".credentials"),
     spShortDescription := "Experimental REST API to run Spark computation graphs",
-    spDescription := """This is the server part for the Kraps project. It provides a simple REST API to execute
-                   |data pipelines with Spark in a language independent manner. It complements (on the JVM side) the
-                   |Haskell bindings available in Krapsh.
+    spDescription := """This is the server part for the Karps project. It provides a simple REST
+                   |API to execute
+                   |data pipelines with Spark in a language independent manner. It complements
+                   |(on the JVM side) the Haskell bindings available in Karps.
                    |
                    |This project is only a technological preview. The API may change in the future.
                    |""".stripMargin,
@@ -88,7 +89,7 @@ object MyBuild extends Build {
     // Our own dep needs to be shaded.
     assemblyShadeRules in assembly := Seq(
       ShadeRule.rename("com.google.protobuf.**" -> "org.tensorframes.protobuf3shade.@1").inAll,
-      ShadeRule.rename("shapeless.**" -> "org.krapsh.shaded.shapeless.@1").inAll
+      ShadeRule.rename("shapeless.**" -> "org.karps.shaded.shapeless.@1").inAll
     ),
     assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
   ).settings(commonSettings: _*)

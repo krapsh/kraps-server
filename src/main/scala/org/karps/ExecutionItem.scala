@@ -1,4 +1,4 @@
-package org.krapsh
+package org.karps
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
@@ -7,8 +7,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
-import org.krapsh.row.Cell
-import org.krapsh.structures.{CellWithType, UntypedNodeJson}
+import org.karps.row.Cell
+import org.karps.structures.{CellWithType, UntypedNodeJson}
 import spray.json.{JsArray, JsNumber, JsObject, JsString, JsValue, RootJsonFormat}
 
 
@@ -104,7 +104,7 @@ class ExecutionItem(
   }
 
   lazy val encoderOut: ExpressionEncoder[Row] = {
-    KrapshStubs.getBoundEncoder(dataframe)
+    KarpsStubs.getBoundEncoder(dataframe)
   }
 
   lazy val queryExecution = dataframe.queryExecution
@@ -113,12 +113,12 @@ class ExecutionItem(
 
   lazy val rdd: RDD[InternalRow] = {
     // Get the execution id first.
-    KrapshStubs.withNewExecutionId(session, queryExecution) {
+    KarpsStubs.withNewExecutionId(session, queryExecution) {
       _execId = Option(session.sparkContext.getLocalProperty("spark.sql.execution.id"))
       require(_execId.isDefined)
     }
 
-    KrapshStubs.withExecutionId(session.sparkContext, executionId) {
+    KarpsStubs.withExecutionId(session.sparkContext, executionId) {
       executedPlan.execute()
     }
   }
@@ -127,7 +127,7 @@ class ExecutionItem(
 
   lazy val collectedInternal: Seq[InternalRow] = {
     val results = ArrayBuffer[InternalRow]()
-    KrapshStubs.withExecutionId(session.sparkContext, executionId) {
+    KarpsStubs.withExecutionId(session.sparkContext, executionId) {
       rdd.collect().foreach(r => results.append(r.copy()))
     }
     results

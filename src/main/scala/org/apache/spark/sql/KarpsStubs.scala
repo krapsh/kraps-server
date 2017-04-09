@@ -5,7 +5,7 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.execution.{QueryExecution, SQLExecution}
 
-object KrapshStubs {
+object KarpsStubs {
   def withExecutionId[T](sc: SparkContext, executionId: String)(body: => T): T= {
     SQLExecution.withExecutionId(sc, executionId)(body)
   }

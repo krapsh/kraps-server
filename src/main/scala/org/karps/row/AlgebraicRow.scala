@@ -1,9 +1,9 @@
-package org.krapsh.row
+package org.karps.row
 
 
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
-import org.krapsh.structures.{AugmentedDataType, IsNullable}
+import org.karps.structures.{AugmentedDataType, IsNullable}
 import spray.json.{DefaultJsonProtocol, JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue, RootJsonFormat}
 
 import scala.util.{Failure, Success, Try}
@@ -17,7 +17,7 @@ case class AlgebraicRow(cells: Seq[Cell])
 
 object AlgebraicRow extends DefaultJsonProtocol {
 
-  import org.krapsh.structures.JsonSparkConversions.{sequence, get}
+  import org.karps.structures.JsonSparkConversions.{sequence, get}
   import Cell.CellOrdering
 
   def fromRow(r: Row, st: StructType): Try[AlgebraicRow] = {

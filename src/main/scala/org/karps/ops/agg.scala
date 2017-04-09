@@ -1,4 +1,4 @@
-package org.krapsh.ops
+package org.karps.ops
 
 import scala.util.{Failure, Try}
 
@@ -8,15 +8,15 @@ import spray.json.{JsArray, JsObject, JsValue}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.RelationalGroupedDataset
 
-import org.krapsh.{ColumnWithType, DataFrameWithType}
-import org.krapsh.ops.Extraction.{FieldName, FieldPath}
-import org.krapsh.ops.SQLFunctionsExtraction.SQLFunctionName
-import org.krapsh.structures.{AugmentedDataType, IsStrict, JsonSparkConversions}
+import org.karps.{ColumnWithType, DataFrameWithType}
+import org.karps.ops.Extraction.{FieldName, FieldPath}
+import org.karps.ops.SQLFunctionsExtraction.SQLFunctionName
+import org.karps.structures.{AugmentedDataType, IsStrict, JsonSparkConversions}
 
 
 object GroupedReduction extends Logging {
 
-  import org.krapsh.structures.JsonSparkConversions.{getString, get, sequence}
+  import org.karps.structures.JsonSparkConversions.{getString, get, sequence}
 
   def groupReduceOrThrow(adf: DataFrameWithType, js: JsValue): DataFrameWithType =
     groupReduce(adf, js).get
