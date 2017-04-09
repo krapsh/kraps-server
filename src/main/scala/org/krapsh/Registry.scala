@@ -216,12 +216,12 @@ class Registry extends Logging {
 
     def getItem(
         raw: UntypedNodeJson,
-        done: Map[String, ExecutionItem]): ExecutionItem = {
+        done: Map[Path, ExecutionItem]): ExecutionItem = {
       val parents = raw.parents.map { path =>
-        done.getOrElse(path, throw new Exception(s"Missing $path"))
+        done.getOrElse(Path.create(path), throw new Exception(s"Missing $path"))
       }
       val logicalDependencies = raw.logicalDependencies.map { path =>
-        done.getOrElse(path, throw new Exception(s"Missing $path"))
+        done.getOrElse(Path.create(path), throw new Exception(s"Missing $path"))
       }
       // Special case here for the pointer constants.
       val builder = if (raw.op == "org.spark.PlaceholderCache") {
@@ -243,33 +243,24 @@ class Registry extends Logging {
         case "local" => Local
         case "distributed" => Distributed
       }
-      val p = {
-        val s = raw.name.split("/")
-        require(s.size >= 1, s)
-        if (s.head == computationId.repr) {
-          Path(s.tail)
-        } else {
-          Path(s)
-        }
-      }
-      val path = GlobalPath(sessionId, computationId, p)
+      val path = GlobalPath.from(sessionId, computationId, Path.create(raw.path))
       new ExecutionItem(parents, logicalDependencies, locality,
         path, cache, builder, raw, sparkSession)
     }
 
     def getItems(
         todo: Seq[UntypedNodeJson],
-        done: Map[String, ExecutionItem],
+        done: Map[Path, ExecutionItem],
         doneInOrder: Seq[ExecutionItem]): Seq[ExecutionItem] = {
       if (todo.isEmpty) {
         return doneInOrder
       }
       // Find all the elements for which all the dependencies have been resolved:
       val (now, later) = todo.partition { raw =>
-        (raw.parents ++ raw.logicalDependencies).forall(done.contains)
+        (raw.parents ++ raw.logicalDependencies).map(Path.create).forall(done.contains)
       }
       require(now.nonEmpty, (todo, done))
-      val processed = now.map(raw => raw.name -> getItem(raw, done))
+      val processed = now.map(raw => Path.create(raw.path) -> getItem(raw, done))
       val done2 = done ++ processed
       getItems(later, done2, doneInOrder ++ processed.map(_._2))
     }
@@ -299,7 +290,7 @@ object Registry {
         p <- getStringList(m, "path")
         comp <- getString(m, "computation")
       } yield {
-        GlobalPath(sid, ComputationId(comp), Path(p))
+        GlobalPath.from(sid, ComputationId(comp), Path.create(p))
       }
     case _ => Failure(new Exception(s"Expected object, got $js"))
   }

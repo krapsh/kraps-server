@@ -42,12 +42,6 @@ object Nullable {
   }
 }
 
-object Nullable {
-  def fromNullability(isNullable: Boolean): Nullable = {
-    if (isNullable) IsNullable else IsStrict
-  }
-}
-
 
 /**
  * The basic data type used around Krapsh.
