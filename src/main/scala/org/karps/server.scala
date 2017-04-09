@@ -1,4 +1,4 @@
-package org.krapsh
+package org.karps
 
 import scala.concurrent.duration._
 import akka.actor.{Actor, ActorSystem, Props}
@@ -6,13 +6,13 @@ import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import org.krapsh.ops.{HdfsPath, HdfsResourceResult}
+import org.karps.ops.{HdfsPath, HdfsResourceResult}
 import spray.can.Http
 import spray.http.MediaTypes._
 import spray.httpx.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
 import spray.routing._
-import org.krapsh.structures.{BatchComputationResultJson, ComputationResultJson, UntypedNodeJson}
+import org.karps.structures.{BatchComputationResultJson, ComputationResultJson, UntypedNodeJson}
 
 
 object Boot extends App {
@@ -23,7 +23,7 @@ object Boot extends App {
   SparkRegistry.setup()
 
   // we need an ActorSystem to host our application in
-  implicit val system = ActorSystem("krapsh-on-spray-can")
+  implicit val system = ActorSystem("karps-on-spray-can")
 
   // create and start our service actor
   val service = system.actorOf(Props[MyServiceActor], "demo-service")

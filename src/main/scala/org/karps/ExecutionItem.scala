@@ -1,4 +1,4 @@
-package org.krapsh
+package org.karps
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
@@ -7,8 +7,8 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
-import org.krapsh.row.Cell
-import org.krapsh.structures.{CellWithType, UntypedNodeJson}
+import org.karps.row.Cell
+import org.karps.structures.{CellWithType, UntypedNodeJson}
 import spray.json.{JsArray, JsNumber, JsObject, JsString, JsValue, RootJsonFormat}
 
 

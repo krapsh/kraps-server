@@ -1,11 +1,11 @@
-package org.krapsh
+package org.karps
 
 import java.util.concurrent.Executors
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.apache.spark.sql.Row
-import org.krapsh.row.AlgebraicRow
-import org.krapsh.structures._
+import org.karps.row.AlgebraicRow
+import org.karps.structures._
 
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}

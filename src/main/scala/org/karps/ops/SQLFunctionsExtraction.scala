@@ -1,4 +1,4 @@
-package org.krapsh.ops
+package org.karps.ops
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.apache.spark.sql.{Column, KrapshStubs, _}
@@ -6,8 +6,8 @@ import org.apache.spark.sql.catalyst.analysis.FunctionRegistry
 import org.apache.spark.sql.catalyst.expressions.Expression
 import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateFunction
 import org.apache.spark.sql.types.{IntegerType, LongType}
-import org.krapsh.{ColumnWithType, KrapshException}
-import org.krapsh.structures.{AugmentedDataType, IsNullable, IsStrict, Nullable}
+import org.karps.{ColumnWithType, KrapshException}
+import org.karps.structures.{AugmentedDataType, IsNullable, IsStrict, Nullable}
 
 import scala.util.{Failure, Success, Try}
 

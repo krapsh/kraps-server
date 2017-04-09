@@ -1,11 +1,11 @@
-package org.krapsh
+package org.karps
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
 import org.apache.spark.SparkContext
 import org.apache.spark.scheduler.{SparkListener, SparkListenerStageCompleted, SparkListenerStageSubmitted}
 import org.apache.spark.sql.SparkSession
-import org.krapsh.ops.{HdfsPath, HdfsResourceResult, SourceStamps}
-import org.krapsh.structures.UntypedNodeJson
+import org.karps.ops.{HdfsPath, HdfsResourceResult, SourceStamps}
+import org.karps.structures.UntypedNodeJson
 
 class KrapshListener(manager: Manager) extends SparkListener with Logging {
   override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {

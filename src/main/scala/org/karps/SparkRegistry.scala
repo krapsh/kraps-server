@@ -1,4 +1,4 @@
-package org.krapsh
+package org.karps
 
 import scala.collection.JavaConversions._
 import scala.util.{Failure, Success}
@@ -8,9 +8,9 @@ import spray.json.{JsString, JsValue}
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.krapsh.row.{AlgebraicRow, Cell, RowArray, RowCell}
-import org.krapsh.ops.{ColumnTransforms, GroupedReduction, Readers, TypeConversions}
-import org.krapsh.structures._
+import org.karps.row.{AlgebraicRow, Cell, RowArray, RowCell}
+import org.karps.ops.{ColumnTransforms, GroupedReduction, Readers, TypeConversions}
+import org.karps.structures._
 
 object UDF {
   /**

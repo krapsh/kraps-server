@@ -1,7 +1,7 @@
-package org.krapsh.structures
+package org.karps.structures
 
 import org.apache.spark.sql.Row
-import org.krapsh._
+import org.karps._
 import spray.json.DefaultJsonProtocol._
 import spray.json.{DefaultJsonProtocol, JsArray, JsBoolean, JsNull, JsNumber, JsString, JsValue}
 

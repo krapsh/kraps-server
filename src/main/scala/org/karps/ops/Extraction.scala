@@ -1,9 +1,9 @@
-package org.krapsh.ops
+package org.karps.ops
 
 import org.apache.spark.sql.types.StructType
-import org.krapsh.{ColumnWithType, DataFrameWithType}
-import org.krapsh.structures.{AugmentedDataType, IsNullable, IsStrict, JsonSparkConversions}
-import org.krapsh.structures.JsonSparkConversions._
+import org.karps.{ColumnWithType, DataFrameWithType}
+import org.karps.structures.{AugmentedDataType, IsNullable, IsStrict, JsonSparkConversions}
+import org.karps.structures.JsonSparkConversions._
 import spray.json.{JsArray, JsString, JsValue}
 
 import scala.util.{Failure, Success, Try}

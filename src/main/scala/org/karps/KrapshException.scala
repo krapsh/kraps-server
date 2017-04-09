@@ -1,4 +1,4 @@
-package org.krapsh
+package org.karps
 
 /**
  * An internal exception caused by a programming error inside Krapsh.

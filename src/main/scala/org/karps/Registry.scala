@@ -1,4 +1,4 @@
-package org.krapsh
+package org.karps
 
 import scala.collection.JavaConverters._
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
@@ -7,9 +7,9 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.functions.{struct => sqlStruct}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql._
-import org.krapsh.ops.Extraction
-import org.krapsh.row.Cell
-import org.krapsh.structures._
+import org.karps.ops.Extraction
+import org.karps.row.Cell
+import org.karps.structures._
 
 import scala.util.parsing.json.JSONObject
 import scala.util.{Failure, Success, Try}
@@ -18,7 +18,7 @@ import scala.util.{Failure, Success, Try}
  * A dataframe, along with the type as Krapsh wants to see it.
  *
  * Krapsh and Spark differ in their handling of nullability and primitive types:
- *  - krapsh allows primitive types as top-level, while Spark only accepts structures at the top
+ *  - karps allows primitive types as top-level, while Spark only accepts structures at the top
  *  level
  *  - Spark does not correctly handle nullability in a number of common situations, so the exact
  *  type has to be overridden by providing the correct data type.

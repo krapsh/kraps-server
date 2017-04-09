@@ -1,7 +1,7 @@
-package org.krapsh
+package org.karps
 
 import com.typesafe.scalalogging.slf4j.{StrictLogging => Logging}
-import org.krapsh.structures.CellWithType
+import org.karps.structures.CellWithType
 import spray.json.DefaultJsonProtocol._
 
 /**

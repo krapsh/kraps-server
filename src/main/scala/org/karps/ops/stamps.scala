@@ -1,4 +1,4 @@
-package org.krapsh.ops
+package org.karps.ops
 
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.sql.SparkSession

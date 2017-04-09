@@ -1,8 +1,8 @@
-package org.krapsh.row
+package org.karps.row
 
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
-import org.krapsh.structures.{AugmentedDataType, IsNullable}
+import org.karps.structures.{AugmentedDataType, IsNullable}
 import spray.json.{JsArray, JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue, RootJsonFormat, RootJsonWriter}
 
 import scala.util.{Failure, Success, Try}
@@ -20,7 +20,7 @@ case class RowCell(r: AlgebraicRow) extends Cell
 
 
 object Cell {
-  import org.krapsh.structures.JsonSparkConversions.{sequence, get}
+  import org.karps.structures.JsonSparkConversions.{sequence, get}
 
   def fromJson(js: JsValue, adt: AugmentedDataType): Try[Cell] = {
     if (adt.nullability == IsNullable) {
