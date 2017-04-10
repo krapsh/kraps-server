@@ -76,7 +76,7 @@ object MyBuild extends Build {
     libraryDependencies ++= sparkDependencies.map(_ % "provided"),
     spShade := true,
     assembly in spPackage := (assembly in shaded).value
-  )
+  ).settings(commonSettings: _*)
 
   lazy val testing = Project("ks_testing", file(".")).settings(
     target := target.value / "testing",
