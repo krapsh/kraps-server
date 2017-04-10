@@ -10,7 +10,8 @@ The simplest way to run the server is to use the prebuilt Spark package.
 
 ## Developer instructions
 
-The spark package has been tested with Spark 2.0 and Spark 2.1.
+The spark package has been tested with Spark 2.0 and Spark 2.1. Due to some bugs
+in Spark 2.0, using Spark 2.1 is strongly recommended.
 
 ```
 ./build/sbt assembly && $SPARK_HOME/bin/spark-submit \
