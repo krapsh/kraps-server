@@ -15,7 +15,7 @@ object MyBuild extends Build {
   lazy val commonSettings = Seq(
     sparkVersion := targetSparkVersion,
     scalaVersion := "2.11.7",
-    version := s"0.1.9",
+    version := s"0.2.0",
     // All Spark Packages need a license
     licenses := Seq("Apache-2.0" -> url("http://opensource.org/licenses/Apache-2.0")),
     parallelExecution := false,
